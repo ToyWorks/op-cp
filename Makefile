@@ -42,14 +42,15 @@ compile:
 	done
 
 ## push: copy app.py and lib/ to the device without making it the boot program
+# lib/*.py land NEXT TO main.py, not in a lib/ subdirectory. The device's
+# sys.path is ['', '.frozen', '/lib', '/system', '/flash/libs'] — note there is
+# no /flash/lib, so a lib/ subdir would upload fine and then fail to import.
+# '' is the working directory, which is /flash. Hence the flat copy.
 .PHONY: push
 push:
 	@echo "==> uploading to $(PORT)"
 	@$(DEV) fs cp $(APP) :app.py
-	@if [ -n "$(LIBS)" ]; then \
-		$(DEV) fs mkdir :lib 2>/dev/null || true; \
-		for f in $(LIBS); do $(DEV) fs cp "$$f" ":$$f"; done; \
-	fi
+	@for f in $(LIBS); do $(DEV) fs cp "$$f" ":$$(basename $$f)"; done
 
 ## run: run app.py live on the device — tracebacks come back here, Ctrl-C stops it
 .PHONY: run
@@ -62,10 +63,7 @@ run:
 deploy: compile
 	@echo "==> installing $(APP) as main.py on $(PORT)"
 	@$(DEV) fs cp $(APP) :main.py
-	@if [ -n "$(LIBS)" ]; then \
-		$(DEV) fs mkdir :lib 2>/dev/null || true; \
-		for f in $(LIBS); do $(DEV) fs cp "$$f" ":$$f"; done; \
-	fi
+	@for f in $(LIBS); do $(DEV) fs cp "$$f" ":$$(basename $$f)"; done
 	@$(DEV) reset
 	@echo "==> deployed; board is rebooting into $(APP)"
 
@@ -76,6 +74,17 @@ undeploy:
 	@$(DEV) reset
 
 # ---------------------------------------------------------------- inspection
+
+## shots: render every screen to sim/shots/ on the host, then look at them
+.PHONY: shots
+shots:
+	@$(PY) sim/shoot.py 3
+
+## metrics: re-dump font metrics from the board (needed after a firmware update)
+.PHONY: metrics
+metrics:
+	@$(DEV) run sim/dump_metrics.py > sim/metrics.json
+	@echo "==> sim/metrics.json refreshed ($$(wc -c < sim/metrics.json) bytes)"
 
 ## probe: dump the M5 API surface this board actually has — check before calling
 .PHONY: probe
@@ -121,7 +130,7 @@ port:
 venv:
 	python3 -m venv $(VENV)
 	$(BIN)/pip install --upgrade pip
-	$(BIN)/pip install mpremote mpy-cross esptool
+	$(BIN)/pip install mpremote mpy-cross esptool pillow
 
 ## help: list targets
 .PHONY: help

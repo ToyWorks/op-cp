@@ -1,3 +1,7 @@
 .venv/
 *.mpy
 __pycache__/
+
+# regenerate with `make shots` — a trailing comment on a pattern line does NOT
+# work in .gitignore, it becomes part of the pattern
+sim/shots/

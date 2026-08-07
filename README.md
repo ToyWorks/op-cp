@@ -12,9 +12,20 @@ make check
 ```
 
 compiles with `mpy-cross`, uploads, runs `selftest.py` on the board, and prints
-the result. See [CLAUDE.md](CLAUDE.md) for the rules that keep it honest — the
-important one being *confirm an M5 API exists before calling it*, since inventing
-a plausible method is the most common way UIFlow2 code fails.
+the result. And because a headless test cannot see a screen:
+
+```bash
+make shots
+```
+
+renders every screen to `sim/shots/` by running the program's **own draw
+functions** against a Pillow-backed M5 stub — not a mock of them — with font
+metrics measured off the real device, so geometry is pixel-exact and colour is
+quantised through RGB565 the way the panel does.
+
+See [CLAUDE.md](CLAUDE.md) for the rules that keep both honest — the important
+one being *confirm an M5 API exists before calling it*, since inventing a
+plausible method is the most common way UIFlow2 code fails.
 
 ## Setup
 
@@ -31,6 +42,8 @@ discovered by matching the M5Stack USB manufacturer string, so a second
 | target | what it does |
 |---|---|
 | `make check` | compile + upload + run the self-test on hardware + read back |
+| `make shots` | render every screen to `sim/shots/` and look at them |
+| `make metrics` | re-dump font metrics from the board after a firmware update |
 | `make run` | run `app.py` live; tracebacks return here, Ctrl-C stops |
 | `make deploy` | install as `main.py` and reboot — starts on power-up |
 | `make undeploy` | remove `main.py`, boot back to the UIFlow2 menu |
@@ -38,18 +51,35 @@ discovered by matching the M5Stack USB manufacturer string, so a second
 | `make api OBJ=M5.Lcd` | list one object's attributes |
 | `make repl` / `ls` / `mem` / `reset` / `port` | the usual |
 
-## What the self-test proves
+## Layout
 
-It runs headless, so it cannot see the screen. It does prove that every computed
-rectangle lands inside the 240×135 panel, that regions do not overlap, that every
-string fits the box it is drawn into, that all four tracks × 49 key bindings
-dispatch without raising, that the transport advances, that save/load round-trips,
-and that memory headroom remains.
+`app.py` is the lifecycle and nothing else — 112 lines. State lives in one
+object, `S`, so modules share it without threading arguments everywhere, and
+imports run strictly one way:
 
-It found four real layout bugs on its first run: three drum labels overflowed
-their step cell, and the help page ran 47 px past the bottom of the screen.
+```
+opcp_conf -> opcp_state -> opcp_audio / opcp_ui -> opcp_screen -> opcp_seq -> opcp_keys -> app
+```
 
-Whether the result *looks* good is still a human question.
+`lib/*.py` deploys **flat, next to `main.py`** — the device has no `/flash/lib`
+on `sys.path`, so a subdirectory would upload fine and then fail to import.
+
+## What the two loops prove
+
+The self-test runs headless on the device: every computed rectangle lands inside
+the 240×135 panel, regions do not overlap, every string fits its box, all four
+tracks × 49 key bindings dispatch without raising, the transport advances,
+save/load round-trips, memory headroom remains. It found four real layout bugs
+on its first run — three drum labels overflowed their step cell, and the help
+page ran 47 px past the bottom of the screen.
+
+The simulator catches what a headless test cannot. It found the parameter strip
+drowning out the sequence, the total absence of type hierarchy, a playhead mark
+floating detached above its column, and a **green cast on every dark grey** —
+`0x0E0E0E` quantises to `rgb(8,12,8)` on an RGB565 panel, so the greys are all
+multiples of `0x10` now.
+
+Panel gamma, backlight, viewing angle — and taste — are still human questions.
 
 ## OP-CP
 
