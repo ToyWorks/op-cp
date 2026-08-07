@@ -76,7 +76,7 @@ def on_key(_kb):
         if S.recording and not S.playing:
             Q.start()
         S.set_status("REC" if S.recording else "ARMED OFF")
-        S.dirty_all = True
+        S.dirty_body = True
         return
 
     ch = chr(code) if 0x20 <= code <= 0x7E else ""
@@ -157,4 +157,7 @@ def on_key(_kb):
         A.cycle_volume()
     else:
         return
-    S.dirty_all = True
+    # tempo / octave / scale / swing / volume touch nothing but the footer, and
+    # the loop repaints that on its own when footer_changed() notices.
+    if ch in " qri'./":
+        S.dirty_body = True

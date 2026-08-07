@@ -194,6 +194,36 @@ S.recording = False
 S.track = 0
 S.view = C.V_ROLL
 
+banner("sound")
+import opcp_audio as A
+print("  kit loaded:   %s  (%d sounds)" % (A.kit_ok, len(A.KIT)))
+check(A.kit_ok, "PCM kit loaded from %s" % A.KIT_PATH)
+if A.kit_ok:
+    kb = sum(len(b) for b in A.KIT.values())
+    print("  kit size:     %d bytes of int16 PCM at %d Hz" % (kb, A.RATE_BASE))
+    for nm in ("BD", "SD", "HH", "V0", "V1", "V2"):
+        check(nm in A.KIT, "kit has %s" % nm)
+    # Every pitch the app can produce must land on a rate the driver handles,
+    # and must stay in tune: octave folding is allowed, detuning is not.
+    for midi in (33, 45, 57, 69, 81, 93, 100):
+        r = A.rate_for(midi)
+        ideal = A.RATE_BASE * (2.0 ** ((midi - A.BASE_MIDI) / 12.0))
+        ratio = r / ideal
+        octaves = 0
+        while ratio > 1.5:
+            ratio /= 2.0
+            octaves += 1
+        while ratio < 0.75:
+            ratio *= 2.0
+            octaves -= 1
+        check(A.RATE_MIN <= r <= A.RATE_MAX,
+              "midi %3d -> %5d Hz, within %d..%d" % (midi, int(r),
+                                                     A.RATE_MIN, A.RATE_MAX))
+        check(abs(ratio - 1.0) < 0.001,
+              "midi %3d stays in tune (octave shift %+d)" % (midi, octaves))
+else:
+    warn(False, "no PCM kit — the app is falling back to tone() beeps")
+
 banner("persistence")
 Q.save()
 print("  save -> %s" % S.status)
@@ -202,13 +232,43 @@ Q.load()
 print("  load -> %s" % S.status)
 check(S.status == "loaded", "pattern loaded back")
 
-banner("memory")
+banner("memory under load")
+# A single free-heap snapshot says very little: MicroPython's heap sawtooths
+# between collections, so the number depends on when you looked. What matters
+# is whether sustained play allocates faster than GC reclaims. So: run it, and
+# watch the floor.
+gc.collect()
+lo = gc.mem_free()
+oom = 0
+S.playing = True
+S.next_tick = time.ticks_ms()
+t0 = time.ticks_ms()
+spins = 0
+while time.ticks_diff(time.ticks_ms(), t0) < 4000:
+    try:
+        app.loop()
+    except MemoryError:
+        oom += 1
+    spins += 1
+    if spins % 200 == 0:
+        f = gc.mem_free()
+        if f < lo:
+            lo = f
+        if spins % 1200 == 0:                 # views allocate differently
+            S.view = (S.view + 1) % 4
+            S.dirty_all = True
+S.playing = False
+S.view = C.V_ROLL
 gc.collect()
 mem_end = gc.mem_free()
 print("  free before import  %d bytes" % mem_start)
-print("  free after  test    %d bytes" % mem_end)
-print("  consumed            %d bytes" % (mem_start - mem_end))
-check(mem_end > 40000, "at least 40 KB headroom left (%d)" % mem_end)
+print("  floor over %d frames of play: %d bytes" % (spins, lo))
+print("  free after collect  %d bytes" % mem_end)
+print("  MemoryError count   %d" % oom)
+check(oom == 0, "no MemoryError during sustained playback")
+# 25 KB, not a round guess: the measured floor with the 36 KB PCM kit loaded is
+# ~36 KB over 20 s across all four views, so this trips well before real trouble.
+check(mem_end > 25000, "at least 25 KB reclaimable headroom (%d)" % mem_end)
 
 S.status = "ready"
 S.dirty_all = True

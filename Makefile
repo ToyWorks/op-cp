@@ -22,6 +22,7 @@ DEV   = $(MPREMOTE) connect $(PORT)
 APP     := app.py
 SOURCES := $(APP) selftest.py
 LIBS    := $(wildcard lib/*.py)
+BLOBS   := $(wildcard lib/*.bin)   # the PCM kit; see tools/build_kit.py
 
 .DEFAULT_GOAL := help
 
@@ -50,7 +51,7 @@ compile:
 push:
 	@echo "==> uploading to $(PORT)"
 	@$(DEV) fs cp $(APP) :app.py
-	@for f in $(LIBS); do $(DEV) fs cp "$$f" ":$$(basename $$f)"; done
+	@for f in $(LIBS) $(BLOBS); do $(DEV) fs cp "$$f" ":$$(basename $$f)"; done
 
 ## run: run app.py live on the device — tracebacks come back here, Ctrl-C stops it
 .PHONY: run
@@ -63,7 +64,7 @@ run:
 deploy: compile
 	@echo "==> installing $(APP) as main.py on $(PORT)"
 	@$(DEV) fs cp $(APP) :main.py
-	@for f in $(LIBS); do $(DEV) fs cp "$$f" ":$$(basename $$f)"; done
+	@for f in $(LIBS) $(BLOBS); do $(DEV) fs cp "$$f" ":$$(basename $$f)"; done
 	@$(DEV) reset
 	@echo "==> deployed; board is rebooting into $(APP)"
 
@@ -79,6 +80,11 @@ undeploy:
 .PHONY: shots
 shots:
 	@$(PY) sim/shoot.py 3
+
+## kit: rebuild lib/opcp_kit.bin from lib/opcp_synth.py (run after tuning sounds)
+.PHONY: kit
+kit:
+	@$(PY) tools/build_kit.py
 
 ## audio: render the kit to WAVs on the host, old vs new, then listen
 .PHONY: audio

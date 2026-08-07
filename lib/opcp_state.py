@@ -38,7 +38,8 @@ class Seq:
 
         # presentation -------------------------------------------------
         self.view = C.V_ROLL
-        self.dirty_all = True
+        self.dirty_all = True     # full repaint incl. fillScreen — view switch only
+        self.dirty_body = False   # just the roll / animation band
         self.flash = [0] * C.STEPS      # per-step trigger decay, for the roll
         self.next_flash = 0
         self.hit = [0] * C.TRACKS       # per-track trigger decay, for the views

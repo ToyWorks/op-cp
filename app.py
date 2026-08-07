@@ -77,7 +77,11 @@ def loop():
 
     if S.dirty_all:
         S.dirty_all = False
+        S.dirty_body = False
         SC.redraw_all()
+    elif S.dirty_body:
+        S.dirty_body = False
+        SC.redraw_body()
 
     A.flush_pending()
 

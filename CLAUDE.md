@@ -67,6 +67,55 @@ this, which is how it was caught.
 Use `setTextColor(fg, bg)` so glyphs paint their own background, and `fillRect`
 only the band whose width can change.
 
+## Sound
+
+`M5.Speaker.tone()` is a bare square wave at constant amplitude — no envelope,
+one timbre, and drums as pure tones. It is a fallback here, not the sound
+source. The real kit is signed-16-bit PCM in `lib/opcp_kit.bin`, rendered on the
+host by `make kit` and played with `playRaw`.
+
+Facts about `playRaw`, all measured on device rather than assumed:
+
+- **It interprets any buffer as int16**, whatever type you pass. `bytearray`,
+  `array('B')` and `array('h')` all behave identically — 8000 bytes plays for
+  459 ms at rate 8000, i.e. 4000 samples. There is no uint8 path.
+- **The sample-rate argument really works**, and is how notes are pitched: one
+  buffer per melodic track, replayed at `rate * 2**(semitones/12)`. Usable range
+  is **700 Hz to 48 kHz**, verified against expected durations. Outside it,
+  fold by octaves — clamping puts the note out of tune.
+- **`memoryview` slices are accepted.**
+- **`isPlaying()` leads the audio by ~39 ms** (one DMA buffer). Do not use it to
+  measure durations without accounting for that.
+
+Rendering the kit **on the device costs ~5.4 s** — far too slow for boot, which
+is why `tools/build_kit.py` runs on the host. The noise source is a seeded
+xorshift so the blob is reproducible; `lib/opcp_kit.bin` is a build artifact.
+
+**Load per sound, never as one blob.** With the app running there is ~66 KB
+free but no contiguous 36 KB block, so reading the whole file at once dies with
+`MemoryError: memory allocation failed, allocating 36096 bytes`. Free heap is
+not the largest free block. Twelve allocations of 1-4 KB fit fine.
+
+## Timing, and why there is no asyncio here
+
+The step clock schedules against an absolute deadline and accumulates
+(`ticks_add(next_tick, interval)`), so it does not drift. Measured under real
+playback: **median 1 ms late, p90 2 ms, max 3 ms** against a 133 ms sixteenth.
+
+asyncio would not improve this and is deliberately not used:
+
+- It is cooperative, so the one thing that *did* cause jitter — a 62 ms
+  full-screen redraw — would block an event loop exactly as it blocks this one.
+  The fix was to stop doing full redraws for control changes, not to change the
+  concurrency model. Full redraw is now view-switch only; everything else
+  repaints the header, footer or roll alone.
+- It helps when code *waits* on I/O. Nothing here waits.
+- Tasks and awaits allocate, and the heap floor under load is already ~23 KB
+  with the PCM kit resident.
+
+If you add something that genuinely blocks (a network fetch, an SD read), that
+is the moment to reconsider — not before.
+
 ## The loop
 
 ```bash
@@ -76,6 +125,8 @@ make run        # run app.py live; tracebacks come back here, Ctrl-C stops
 make deploy     # install as main.py and reboot — starts on power-up
 make undeploy   # remove main.py, boot back to the UIFlow2 menu
 make probe      # dump the real API surface
+make kit        # rebuild lib/opcp_kit.bin after tuning sounds in opcp_synth
+make audio      # render the kit to WAV on the host, old vs new, then listen
 make metrics    # re-dump font metrics from the board (after a firmware update)
 make repl       # interactive REPL, Ctrl-] to exit
 make port       # show the detected serial port
@@ -92,7 +143,8 @@ opcp_conf     constants: palette, musical tables, key maps       (no state)
    ^
 opcp_state    S — every mutable field, in one object
    ^
-opcp_audio    the mixer and the voices
+opcp_synth    PCM synthesis — HOST side, run by tools/build_kit.py
+opcp_audio    the mixer and the voices; loads lib/opcp_kit.bin
 opcp_ui       fonts, layout, the roll, the header, the footer, help
    ^
 opcp_screen   the three alternate views + the full-screen compositor

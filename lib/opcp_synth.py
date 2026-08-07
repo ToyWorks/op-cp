@@ -16,14 +16,21 @@
 #
 # Two constraints shape everything below, and both are the device's:
 #
-#   1. RAM. There is ~80 KB free. 16-bit samples at 22 kHz would blow it, so
-#      everything is unsigned 8-bit at 11025 Hz. That is 12-bit-sampler
-#      territory — which is the right era for this instrument anyway.
-#   2. CPU. Per-sample arithmetic in MicroPython is slow, so nothing is
-#      synthesised per note. Drums are one-shot buffers. Melodic voices are ONE
-#      buffer per track, pitched by changing playRaw's sample rate — the same
-#      trick a hardware sampler uses. The envelope stretches with pitch, which
-#      is a sampler's characteristic behaviour rather than a defect.
+#   1. Sample format is not negotiable: playRaw interprets ANY buffer as int16,
+#      whatever you pass it. Measured on device — 8000 bytes played for 459 ms
+#      at rate 8000, i.e. 4000 samples, not 8000. bytearray, array('B') and
+#      array('h') all behave identically. So: signed 16-bit, 11025 Hz.
+#   2. RAM. ~66 KB free with the app running, so the kit is trimmed to ~35 KB
+#      and lives in ONE blob that the sounds take memoryview slices of — no
+#      per-sound copies. (memoryview slices are accepted by playRaw; verified.)
+#   3. CPU. Rendering on device costs ~5.4 s for the whole kit — measured, and
+#      far too slow for boot. So this module runs on the HOST: tools/build_kit.py
+#      renders it into lib/opcp_kit.bin, and the device just reads the file. The
+#      noise RNG is deterministic precisely so the shipped blob is reproducible.
+#
+# Melodic voices are ONE buffer per track, pitched by changing playRaw's sample
+# rate — the trick a hardware sampler uses. The envelope stretches with pitch,
+# which is a sampler's characteristic behaviour rather than a defect.
 
 try:
     from array import array
@@ -32,7 +39,7 @@ except ImportError:
 
 RATE = 11025             # playback rate the buffers are rendered for
 BASE_MIDI = 69           # the pitch the melodic buffers are rendered AT (A4)
-CENTER = 128             # unsigned 8-bit silence
+PEAK = 32767             # signed 16-bit full scale
 
 _TWO_PI = 6.283185307
 
@@ -73,17 +80,17 @@ def _sin(x):
 
 def _buf(n):
     if array is not None:
-        return array("B", bytes(n))
-    return bytearray(n)
+        return array("h", bytes(2 * n))
+    return [0] * n
 
 
 def _write(buf, i, v):
-    """Clamp to 8-bit unsigned around the DC centre."""
-    s = int(CENTER + v * 127.0)
-    if s < 0:
-        s = 0
-    elif s > 255:
-        s = 255
+    """Clamp to signed 16-bit."""
+    s = int(v * PEAK)
+    if s > PEAK:
+        s = PEAK
+    elif s < -PEAK:
+        s = -PEAK
     buf[i] = s
 
 
@@ -97,33 +104,33 @@ def _write(buf, i, v):
 #   decay  exponential amplitude decay; `hold` keeps it flat first
 DRUM_SPECS = {
     # a kick is a sine that falls fast: the sweep IS the beater transient
-    "BD": (170, [{"k": "tone", "f0": 132, "f1": 44, "sweep": 0.010,
+    "BD": (150, [{"k": "tone", "f0": 132, "f1": 44, "sweep": 0.010,
                   "decay": 0.055, "gain": 1.00, "drive": 1.6}]),
     # snare = a tuned shell plus a noisy wire bed
-    "SD": (150, [{"k": "tone", "f0": 232, "f1": 178, "sweep": 0.030,
+    "SD": (140, [{"k": "tone", "f0": 232, "f1": 178, "sweep": 0.030,
                   "decay": 0.045, "gain": 0.45},
                  {"k": "tone", "f0": 331, "f1": 271, "sweep": 0.030,
                   "decay": 0.035, "gain": 0.28},
                  {"k": "noise", "hp": 0.55, "decay": 0.055, "gain": 0.60}]),
     # hats are noise, high-passed hard and cut short. Never a sine.
-    "HH": (52,  [{"k": "noise", "hp": 0.86, "decay": 0.012, "gain": 0.72}]),
-    "OH": (240, [{"k": "noise", "hp": 0.82, "decay": 0.105, "gain": 0.60}]),
+    "HH": (48,  [{"k": "noise", "hp": 0.86, "decay": 0.012, "gain": 0.72}]),
+    "OH": (160, [{"k": "noise", "hp": 0.82, "decay": 0.105, "gain": 0.60}]),
     # rimshot: a click with just enough pitch to place it
-    "RM": (55,  [{"k": "tone", "f0": 1720, "f1": 1180, "sweep": 0.006,
+    "RM": (50,  [{"k": "tone", "f0": 1720, "f1": 1180, "sweep": 0.006,
                   "decay": 0.010, "gain": 0.55},
                  {"k": "noise", "hp": 0.70, "decay": 0.007, "gain": 0.45}]),
-    "TL": (200, [{"k": "tone", "f0": 168, "f1": 108, "sweep": 0.045,
+    "TL": (140, [{"k": "tone", "f0": 168, "f1": 108, "sweep": 0.045,
                   "decay": 0.070, "gain": 0.85, "drive": 1.2},
                  {"k": "noise", "hp": 0.5, "decay": 0.010, "gain": 0.18}]),
-    "TH": (170, [{"k": "tone", "f0": 246, "f1": 158, "sweep": 0.040,
+    "TH": (125, [{"k": "tone", "f0": 246, "f1": 158, "sweep": 0.040,
                   "decay": 0.058, "gain": 0.85, "drive": 1.2},
                  {"k": "noise", "hp": 0.5, "decay": 0.010, "gain": 0.18}]),
     # clap: several noise bursts a few ms apart, then a tail. The stutter is
     # the whole sound — one burst reads as a snare, not hands.
-    "CP": (200, [{"k": "noise", "hp": 0.62, "decay": 0.040, "gain": 0.62,
+    "CP": (150, [{"k": "noise", "hp": 0.62, "decay": 0.040, "gain": 0.62,
                   "bursts": (0.0, 0.011, 0.021, 0.031)}]),
     # cowbell: two detuned squares, the classic inharmonic pair
-    "CB": (180, [{"k": "square", "f0": 823, "decay": 0.055, "gain": 0.34},
+    "CB": (150, [{"k": "square", "f0": 823, "decay": 0.055, "gain": 0.34},
                  {"k": "square", "f0": 542, "decay": 0.060, "gain": 0.34}]),
 }
 
@@ -211,7 +218,7 @@ def render_drum(name):
 #   LEAD  two detuned saws — the detune is what stops it sounding like a beep
 #   BASS  sine plus an octave-down square, soft-clipped for weight
 #   KEYS  three-partial additive with a slow attack, so it sits behind the lead
-VOICE_MS = 260
+VOICE_MS = 170
 
 def _saw(ph):
     return 2.0 * (ph - int(ph)) - 1.0
@@ -270,3 +277,45 @@ def render_voice(track):
 def rate_for(midi):
     """Playback rate that shifts the A4 buffer to `midi`."""
     return int(RATE * (2.0 ** ((midi - BASE_MIDI) / 12.0)))
+
+
+# ------------------------------------------------------------------ the blob
+DRUM_ORDER = ("BD", "SD", "HH", "OH", "RM", "TL", "TH", "CP", "CB")
+VOICE_ORDER = ("V0", "V1", "V2")
+MAGIC = b"OPK1"
+
+
+def render_all():
+    """Every sound, in a fixed order. Host-side; see tools/build_kit.py."""
+    out = []
+    for nm in DRUM_ORDER:
+        out.append((nm, render_drum(nm)))
+    for t in range(3):
+        out.append((VOICE_ORDER[t], render_voice(t)))
+    return out
+
+
+def pack(entries):
+    """Serialise to the .bin the device loads.
+
+    Layout: magic | count | count x (name[4], offset u32, nbytes u32) | data.
+    Little-endian throughout, matching the device's int16 sample order.
+    """
+    import struct
+    header = bytearray(MAGIC)
+    header.append(len(entries))
+    body = bytearray()
+    index = bytearray()
+    for name, buf in entries:
+        raw = bytes(memoryview(buf).cast("B")) if array is not None else b""
+        index += struct.pack("<4sII", name.encode()[:4].ljust(4, b"\0"),
+                             len(body), len(raw))
+        body += raw
+    base = len(header) + len(index)
+    # offsets are absolute in the finished file
+    fixed = bytearray()
+    import struct as _s
+    for k in range(len(entries)):
+        nm, off, ln = _s.unpack_from("<4sII", index, k * 12)
+        fixed += _s.pack("<4sII", nm, off + base, ln)
+    return bytes(header + fixed + body)

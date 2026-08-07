@@ -41,7 +41,7 @@ class Mix:
         self.buf = [0.0] * self.n
 
     def add_pcm(self, pcm, rate, at_ms, gain=1.0):
-        """Play an 8-bit unsigned buffer at `rate`, exactly as playRaw would."""
+        """Play a signed 16-bit buffer at `rate`, exactly as playRaw would."""
         start = int(OUT_RATE * at_ms / 1000)
         dur = len(pcm) / rate
         count = int(dur * OUT_RATE)
@@ -52,7 +52,7 @@ class Mix:
             src = int(k * rate / OUT_RATE)
             if src >= len(pcm):
                 break
-            self.buf[j] += ((pcm[src] - 128) / 127.0) * gain
+            self.buf[j] += (pcm[src] / 32768.0) * gain
 
     def add_square(self, freq, ms, at_ms, gain=1.0):
         """Emulate M5.Speaker.tone(): a square wave, flat, no envelope."""
@@ -106,13 +106,14 @@ print("rendering synth buffers...")
 DRUMS = {}
 for nm in C.DRUMS:
     DRUMS[nm[0]] = SY.render_drum(nm[0])
-    print("  drum %-3s %5d samples (%d ms)"
-          % (nm[0], len(DRUMS[nm[0]]), 1000 * len(DRUMS[nm[0]]) // SY.RATE))
+    print("  drum %-3s %5d samples (%d ms, %d bytes)"
+          % (nm[0], len(DRUMS[nm[0]]), 1000 * len(DRUMS[nm[0]]) // SY.RATE,
+             len(DRUMS[nm[0]]) * 2))
 VOICES = [SY.render_voice(t) for t in range(3)]
 for t in range(3):
     print("  voice %-5s %5d samples" % (C.TRACK_NAMES[t], len(VOICES[t])))
-total = sum(len(b) for b in DRUMS.values()) + sum(len(b) for b in VOICES)
-print("  total buffer RAM: %d bytes" % total)
+total = (sum(len(b) for b in DRUMS.values()) + sum(len(b) for b in VOICES)) * 2
+print("  total buffer RAM: %d bytes (int16)" % total)
 
 
 # ------------------------------------------------------------------ a piece

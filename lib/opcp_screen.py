@@ -170,6 +170,22 @@ def animate():
         draw_cartoon()
 
 
+def redraw_body():
+    """Repaint only the roll (or the animation band) — no fillScreen.
+
+    Almost every key used to set dirty_all, which meant a 62 ms full-screen
+    redraw. At a 133 ms sixteenth that is half a step, and it showed up as the
+    step clock firing up to 60 ms late whenever you touched a control mid-play.
+    The header and footer already repaint themselves from head_changed() /
+    footer_changed(), so a control change rarely needs more than this.
+    """
+    if S.view == C.V_ROLL:
+        U.draw_roll()
+    elif S.view != C.V_HELP:
+        build_ring()
+        draw_cartoon(True)
+
+
 def redraw_all():
     M5.Lcd.fillScreen(C.BG)
     if S.view == C.V_HELP:
