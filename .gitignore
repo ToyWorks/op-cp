@@ -1,0 +1,3 @@
+.venv/
+*.mpy
+__pycache__/
