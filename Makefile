@@ -80,6 +80,11 @@ undeploy:
 shots:
 	@$(PY) sim/shoot.py 3
 
+## audio: render the kit to WAVs on the host, old vs new, then listen
+.PHONY: audio
+audio:
+	@$(PY) sim/render_audio.py
+
 ## metrics: re-dump font metrics from the board (needed after a firmware update)
 .PHONY: metrics
 metrics:
