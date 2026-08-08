@@ -167,6 +167,13 @@ make deploy BOARD=cube   # install as main.py, start on power-up
 make probe BOARD=cube    # the real API surface
 ```
 
+`make check` on the CoreS3 waits 1.5 s before measuring the microphone,
+because `setup()` has just glided the head to neutral and these servos read
+on this board's own mic at ~20x the room floor: without the wait the
+noise-gate warning fires every run (measured 1091 median mid-settle vs 48
+once settled), and a warning that always fires is a warning you stop
+reading.
+
 `make check` cannot judge the dance. For that, put a pattern on the
 Cardputer, turn its volume up, and watch — or play something percussive from
 the host. A **sustained** tone is a bad test signal: 250 ms beeps at 120 bpm

@@ -188,6 +188,13 @@ S.link_stop = False
 S.level = 0
 
 banner("microphone")
+if BOARD.HAS_BODY:
+    # setup() just power-cycled the servo rail and glided the head to
+    # neutral, and this board's servos read on its own microphone at ~20x
+    # the room floor. Measuring before they settle makes the noise-gate
+    # warning below fire every single run, which teaches you to ignore it.
+    print("  (waiting 1.5 s for the servos to settle)")
+    time.sleep_ms(1500)
 vals = []
 t0 = time.ticks_ms()
 while len(vals) < 20 and time.ticks_diff(time.ticks_ms(), t0) < 3000:
