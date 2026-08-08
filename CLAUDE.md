@@ -2,9 +2,9 @@
 
 The Cardputer-ADV across the desk runs OP-CP and plays; a board over here
 listens with its own microphone and dances. Sound is the whole protocol — no
-radio, no pairing. The workflow, the Makefile and the sim are the ones from
-[`../cardputer-adv-uiflow2`](../cardputer-adv-uiflow2/CLAUDE.md); read that
-CLAUDE.md first. Only the facts specific to THIS hardware are here.
+radio, no pairing. The workflow, the Makefile and the sim are OP-CP's, one
+directory up: read [`../CLAUDE.md`](../CLAUDE.md) first. Only the facts
+specific to THIS hardware are here.
 
 ## Two boards, one program, split at deploy time
 
@@ -39,7 +39,7 @@ with no hardware import), and the body (`on_beat` / `tick` / `rest` /
   SCS0009 bus servos: **id 1 = X (yaw), id 2 = Y (pitch)**.
 - `set_servo_angle(id, deg, time_ms, speed)` — degrees around an NVS-stored
   zero. **X neutral 0°; Y rest pose 45°, official example sweeps 20..70.**
-  The C++ build in `../stackchan-envpro` established pitch 5..85° as the
+  An earlier C++ build of the same base established pitch 5..85° as the
   hardware protection window and yaw ±60° as the product limit. This app
   clamps to yaw ±30, pitch 28..62 — inside everything.
 - **Power-up without a lurch** (official example pattern, same lesson as the
