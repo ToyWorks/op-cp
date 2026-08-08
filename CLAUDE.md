@@ -142,12 +142,12 @@ is the moment to reconsider — not before.
 ## The link
 
 `lib/opcp_link.py` broadcasts every step over ESP-NOW (channel 1, 9-byte
-packets: step, per-track hit bitmask, drum index, bpm) for the StackChan in
-`../stackchan-dance`, which prefers packets over its microphone and falls
-back automatically. The wire format lives in both files' headers — change
-one, change both. ctrl+N toggles; on by default (a broadcast nobody hears
-costs nothing). The radio comes up lazily, so `import espnow` failures
-degrade to link-off instead of dying at boot.
+packets: step, per-track hit bitmask, drum index, bpm) so a companion device
+can dance from ground truth instead of listening to the room. The wire format
+is documented in that file's header; a receiver needs to agree with it.
+ctrl+N toggles; on by default (a broadcast nobody hears costs nothing). The
+radio comes up lazily, so `import espnow` failures degrade to link-off
+instead of dying at boot.
 
 ## The loop
 

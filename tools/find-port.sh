@@ -9,9 +9,9 @@ set -e
 
 MPREMOTE="${MPREMOTE:-mpremote}"
 
-# Match the PRODUCT string, not just the manufacturer: the CoreS3 in
-# ../stackchan-dance is also an "M5Stack" and shares this desk, so a
-# manufacturer match picks whichever enumerated first.
+# Match the PRODUCT string, not just the manufacturer: every M5 board reports
+# "M5Stack", so with a second one on the desk a manufacturer match picks
+# whichever enumerated first.
 port=$("$MPREMOTE" devs 2>/dev/null | awk '$4 == "M5Stack" && $0 ~ /Cardputer/ { print $1; exit }')
 
 if [ -z "$port" ]; then
