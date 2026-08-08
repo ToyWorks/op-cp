@@ -173,19 +173,21 @@ def _buttons_begin():
 
 
 def poll_input(now):
-    """(toggle_link, palette_step) — one action per falling edge, not per
-    poll. The top button walks the colour; the one below it toggles the ear."""
+    """(toggle_link, palette_step, toggle_still) — one action per falling
+    edge, not per poll. The top button walks the colour; the one below it
+    toggles the ear. Nothing stills a board with no body, so the third field
+    is always False here."""
     global _prev
     if _pins is None or time.ticks_diff(now, S.next_btn) < 0:
-        return (False, 0)
+        return (False, 0, False)
     S.next_btn = time.ticks_add(now, BTN_POLL_MS)
     try:
         level = (_pins[0].value(), _pins[1].value())
     except Exception:
-        return (False, 0)
+        return (False, 0, False)
     edge = tuple(p == 1 and c == 0 for p, c in zip(_prev, level))
     _prev = level
-    return (edge[1], 1 if edge[0] else 0)
+    return (edge[1], 1 if edge[0] else 0, False)
 
 
 # ---------------------------------------------------------------------- body
