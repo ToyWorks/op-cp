@@ -89,6 +89,12 @@ if G["clap"]:
     check(mouth_bot < G["clap_y"], "the mouth never reaches the hands (%d < %d)"
           % (mouth_bot, G["clap_y"]))
     check(rx - (lx + G["clap_w"]) < 8, "the hands actually meet on a full hit")
+    _hold = C.HIT_MAX - G["clap_hold"]
+    _shut = sum(1 for h in range(C.HIT_MAX + 1)
+                if ((G["clap_travel"] if h >= _hold
+                     else h * G["clap_travel"] // _hold) // 3) * 3 >= reach - 2)
+    print("  clap shut for  %d frames (~%d ms)" % (_shut, _shut * C.ANIM_MS))
+    check(_shut >= 3, "the clap stays shut long enough to read (%d frames)" % _shut)
     check(G["clap_y"] + F.CLAP_H <= F.PAD_Y, "hands clear the bar")
     check(F._clap_l is not None and F._clap_r is not None,
           "both clap sprites loaded")
@@ -97,6 +103,35 @@ else:
     check(F.HAND_X + 3 + 100 <= F.W, "hand sprite inside width")
     check(F._hand_up is not None and F._hand_tap is not None,
           "both hand sprites loaded")
+
+banner("the peak of a hit reaches the panel")
+# The bug this catches: S.hit was decayed BEFORE F.draw(), so the largest value
+# ever rendered was HIT_MAX - 1. Every geometry check below computes worst cases
+# from HIT_MAX and passed happily, and the simulator — which sets S.hit directly
+# — showed a peak the device could never reach. On the cube that meant the
+# clapping hands stopped 16 px apart and never touched.
+_peaks = []
+_real_draw = F.draw
+
+
+def _spy(now):
+    _peaks.append(S.hit)
+    return _real_draw(now)
+
+
+F.draw = _spy
+S.next_anim = 0
+app._beat(time.ticks_ms(), 3)
+_t0 = time.ticks_ms()
+while time.ticks_diff(time.ticks_ms(), _t0) < C.ANIM_MS * 3:
+    app.loop()
+F.draw = _real_draw
+print("  hit values drawn %s" % (_peaks,))
+check(C.HIT_MAX in _peaks,
+      "the frame a beat lands on is drawn at full HIT_MAX (%d), not decayed first"
+      % C.HIT_MAX)
+S.hit = 0
+S.grooving = False
 
 banner("beat detector on synthetic music")
 bt = Beat()
