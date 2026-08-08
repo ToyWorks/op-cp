@@ -9,10 +9,13 @@ set -e
 
 MPREMOTE="${MPREMOTE:-mpremote}"
 
-port=$("$MPREMOTE" devs 2>/dev/null | awk '$4 == "M5Stack" { print $1; exit }')
+# Match the PRODUCT string, not just the manufacturer: the CoreS3 in
+# ../stackchan-dance is also an "M5Stack" and shares this desk, so a
+# manufacturer match picks whichever enumerated first.
+port=$("$MPREMOTE" devs 2>/dev/null | awk '$4 == "M5Stack" && $0 ~ /Cardputer/ { print $1; exit }')
 
 if [ -z "$port" ]; then
-    echo "no M5Stack board found on USB." >&2
+    echo "no Cardputer found on USB." >&2
     echo "checked:" >&2
     "$MPREMOTE" devs 2>/dev/null | sed 's/^/  /' >&2
     exit 1

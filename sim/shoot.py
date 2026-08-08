@@ -121,6 +121,65 @@ S.view = C.V_HELP
 SC.redraw_all()
 snap("help")
 
+# --- ghost check ----------------------------------------------------------
+# The animated views erase only what they last painted, rather than clearing
+# the whole band, so a wrong erase box leaves a trail that no single snapshot
+# would show. Drive each view the way the music drives it, without clearing
+# between frames, then compare against the same final state drawn onto a
+# clean band: any difference IS a ghost.
+GHOSTS = 0
+
+
+def _ghost_check(view, name):
+    global GHOSTS
+    S.view = view
+    seq = []
+    SC.redraw_all()                       # a clean start, caches reset
+    for i in range(40):
+        S.track = i % C.TRACKS
+        S.hit[:] = [max(0, C.HIT_MAX - ((i + t * 3) % 10)) for t in range(C.TRACKS)]
+        S.play_step = i % C.STEPS
+        S.blink = 2 if i % 11 == 0 else 0
+        S.last_semi = (i * 5) % 16
+        SC.draw_cartoon()                 # exactly what animate() calls
+        seq.append((list(S.hit), S.track, S.play_step, S.blink, S.last_semi))
+    band = (0, U.ROLL_Y, U.W, U.ROLL_Y + U.ROLL_H)
+    dirty = m5.Lcd.img.crop(band)
+
+    S.hit[:], S.track, S.play_step, S.blink, S.last_semi = seq[-1]
+    SC.redraw_all()                       # same state, clean band
+    clean = m5.Lcd.img.crop(band)
+
+    # only the animation band: the header and the footer are repainted by the
+    # app loop's own changed() checks, not by draw_cartoon, so including them
+    # would compare this harness against itself
+    dp, cp = dirty.load(), clean.load()
+    bad = []
+    for yy in range(dirty.height):
+        for xx in range(dirty.width):
+            if dp[xx, yy] != cp[xx, yy]:
+                bad.append((xx, yy + U.ROLL_Y, dp[xx, yy]))
+    n = len(bad)
+    print("  ghost check %-6s %d pixels differ after 40 live frames" % (name, n))
+    if n:
+        GHOSTS += n
+        print("      at %s%s" % (", ".join("(%d,%d)%s" % b for b in bad[:8]),
+                                 " ..." if n > 8 else ""))
+        from PIL import ImageChops
+        ImageChops.difference(dirty, clean).resize(
+            (dirty.width * SCALE, dirty.height * SCALE), Image.NEAREST).save(
+                os.path.join(OUT, "_ghosts-%s.png" % name))
+        print("      -> sim/shots/_ghosts-%s.png" % name)
+
+
+print("")
+S.playing = True
+for _v, _n in ((C.V_FACE, "face"), (C.V_RING, "ring"), (C.V_BARS, "bars")):
+    _ghost_check(_v, _n)
+S.playing = False
+S.hit[:] = [0, 0, 0, 0]
+S.track = 0
+
 # --- contact sheet --------------------------------------------------------
 COLS = 4
 cell_w, cell_h = U.W, U.H
@@ -139,3 +198,9 @@ for i, (name, img) in enumerate(shots):
 s2 = sheet.resize((sheet.width * 2, sheet.height * 2), Image.NEAREST)
 s2.save(os.path.join(OUT, "_contact.png"))
 print("\n  contact sheet -> %s/_contact.png  (%d shots)" % (OUT, len(shots)))
+
+# A ghost is a correctness bug, not a note: every view must erase exactly what
+# it drew last time. Fail loudly rather than leaving it in a PNG.
+if GHOSTS:
+    raise SystemExit("FAILED: %d ghost pixels — see sim/shots/_ghosts-*.png"
+                     % GHOSTS)

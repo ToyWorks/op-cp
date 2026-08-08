@@ -14,6 +14,14 @@ import opcp_conf as C
 import opcp_ui as U
 from opcp_state import S
 
+# worst-case extents, so the erase boxes above are computed once and cannot
+# drift from what the drawing code actually paints
+MARK_D_MIN = 6           # percussion marks start this far out of the face
+MARK_D_RANGE = 10        # ...and travel this much further at full hit
+MARK_D = MARK_D_MIN + MARK_D_RANGE
+DOT_R = 6                # biggest ring dot is the 5 px playhead
+PULSE_R = 13             # biggest centre pulse is 3 + 9
+
 _TRIG = None
 
 
@@ -57,10 +65,35 @@ def build_ring():
     S.ring_pts = pts
 
 
+# The bounds each view last painted, so the next frame can erase exactly that
+# instead of the whole band. Clearing 240x69 and redrawing into it 18 times a
+# second is what the face flicker was: the panel spends part of every frame
+# showing the cleared state. redraw with full=True resets these.
+_face_box = None
+_ring_drawn = False
+_bars_labels = None
+
+
+def _erase(box):
+    if box:
+        M5.Lcd.fillRect(box[0], box[1], box[2], box[3], C.BG)
+
+
+def _band(full):
+    """A full repaint owns the band; an animation frame does not."""
+    if full:
+        top, h = anim_zone()
+        M5.Lcd.fillRect(0, top, U.W, h, C.BG)
+        return True
+    return False
+
+
 # --- FACE: one flat shape, driven entirely by the music -------------------
 def draw_face(full=False):
+    global _face_box
     top, h = anim_zone()
-    M5.Lcd.fillRect(0, top, U.W, h, C.BG)
+    if _band(full):
+        _face_box = None
     energy = max(S.hit)
     c = C.MUTED if S.muted[S.track] else C.TRACK_COLORS[S.track]
 
@@ -68,6 +101,17 @@ def draw_face(full=False):
     fh = min(h - 8, 52 + (energy * 8) // C.HIT_MAX)
     fx = (U.W - fw) // 2
     fy = top + (h - fh) // 2
+
+    # the marks below reach MARK_D px out of each side at full percussion, so
+    # one box covers everything this function can paint
+    _erase(_face_box)
+    ex0 = fx - MARK_D
+    if ex0 < 0:
+        ex0 = 0
+    ex1 = fx + fw + MARK_D
+    if ex1 > U.W:
+        ex1 = U.W
+    _face_box = (ex0, fy, ex1 - ex0, fh)
 
     M5.Lcd.fillRect(fx, fy, fw, fh, C.TRACK_DEEP[S.track])
     M5.Lcd.fillRect(fx, fy, fw, 3, c)
@@ -85,18 +129,34 @@ def draw_face(full=False):
 
     # percussion pushes marks out of the sides rather than shaking the frame
     if S.hit[3]:
-        d = 6 + (S.hit[3] * 10) // C.HIT_MAX
+        d = MARK_D_MIN + (S.hit[3] * MARK_D_RANGE) // C.HIT_MAX
         M5.Lcd.fillRect(fx - d, fy + fh // 2, 4, 4, C.TRACK_COLORS[3])
         M5.Lcd.fillRect(fx + fw + d - 4, fy + fh // 2, 4, 4, C.TRACK_COLORS[3])
 
 
 # --- RING: the sixteen steps as a loop the playhead runs around -----------
 def draw_ring(full=False):
+    global _ring_drawn
     top, h = anim_zone()
-    M5.Lcd.fillRect(0, top, U.W, h, C.BG)
+    if _band(full):
+        _ring_drawn = False
     if not S.ring_pts:
         build_ring()
     st = S.steps()
+    # The dots sit at fixed points and only change size, so a smaller one drawn
+    # over a bigger one leaves a halo — each needs its own worst case erased,
+    # which is still a fifth of the band that contains all sixteen.
+    #
+    # ALL of the erasing first, though: neighbouring dots are 9 px apart and
+    # these boxes are 13 px wide, so erasing dot B after drawing dot A takes a
+    # bite out of A. (Caught by the ghost check, which reported missing pixels
+    # rather than left-over ones — the giveaway.)
+    if _ring_drawn:
+        for x, y in S.ring_pts:
+            M5.Lcd.fillRect(x - DOT_R, y - DOT_R, 2 * DOT_R + 1,
+                            2 * DOT_R + 1, C.BG)
+        M5.Lcd.fillRect(U.W // 2 - PULSE_R, top + h // 2 - PULSE_R,
+                        2 * PULSE_R + 1, 2 * PULSE_R + 1, C.BG)
     for i, (x, y) in enumerate(S.ring_pts):
         on = st[i] is not None
         if S.playing and i == S.play_step:
@@ -116,27 +176,46 @@ def draw_ring(full=False):
         M5.Lcd.fillCircle(U.W // 2, top + h // 2,
                           3 + (energy * 9) // C.HIT_MAX,
                           C.TRACK_COLORS[S.track])
+    _ring_drawn = True
 
 
 # --- BARS: four channel meters --------------------------------------------
 def draw_bars(full=False):
+    # no per-frame band clear: every column repaints its own full height as
+    # rail-then-level, and the labels draw with a background, so there is
+    # nothing between them that could go stale
+    global _bars_labels
+    if _band(full):
+        _bars_labels = None
     top, h = anim_zone()
-    M5.Lcd.fillRect(0, top, U.W, h, C.BG)
     seg = U.W // C.TRACKS
     bw = max(10, U.SW)           # same width as a roll column — one vocabulary
     base = top + h - U.TINY_H - 2
     maxh = base - top - 2
     M5.Lcd.fillRect(U.ROLL_X, base, U.ROLL_W, 1, C.FAINT)
-    M5.Lcd.setFont(U.TINY)
+    # The four names cost 7.6 ms of a 9.8 ms frame — measured; text is by far
+    # the most expensive thing on this screen, four drawStrings costing more
+    # than clearing the entire band. They only change when the selection or a
+    # mute does, so they are drawn then and not eighteen times a second.
+    labels = (S.track, tuple(S.muted))
+    names = labels != _bars_labels
+    _bars_labels = labels
+    if names:
+        M5.Lcd.setFont(U.TINY)
     for t in range(C.TRACKS):
         x = t * seg + (seg - bw) // 2
         lvl = 2 + (S.hit[t] * (maxh - 2)) // C.HIT_MAX
         c = C.MUTED if S.muted[t] else C.TRACK_COLORS[t]
-        M5.Lcd.fillRect(x, top, bw, maxh, C.RAIL)
+        # rail only ABOVE the level, not the full column with the level
+        # painted back over it: the two used to overlap by the level's whole
+        # height, which is the tallest thing on screen at full hit
+        M5.Lcd.fillRect(x, top, bw, maxh + 2 - lvl, C.RAIL)
         M5.Lcd.fillRect(x, base - lvl, bw, lvl, c)
-        M5.Lcd.setTextColor(c if t == S.track else C.DIM, C.BG)
-        s = C.TRACK_NAMES[t]
-        M5.Lcd.drawString(s, t * seg + (seg - M5.Lcd.textWidth(s)) // 2, base + 2)
+        if names:
+            M5.Lcd.setTextColor(c if t == S.track else C.DIM, C.BG)
+            s = C.TRACK_NAMES[t]
+            M5.Lcd.drawString(s, t * seg + (seg - M5.Lcd.textWidth(s)) // 2,
+                              base + 2)
 
 
 # --- FILES: eight save slots and the factory presets ----------------------
@@ -148,7 +227,7 @@ def draw_files(full=False):
     FAINT (presets are read-only targets) and every slot digit lights up.
     """
     top, h = anim_zone()
-    M5.Lcd.fillRect(0, top, U.W, h, C.BG)
+    M5.Lcd.fillRect(0, top, U.W, h, C.BG)   # not animated; one clear is fine
     M5.Lcd.setFont(U.TINY)
     colw = (U.W - 2 * U.MARGIN) // 3
     lh = (h - 4) // 4
@@ -178,12 +257,16 @@ def draw_files(full=False):
 
 
 def draw_cartoon(full=False):
-    if S.view == C.V_FACE:
-        draw_face(full)
-    elif S.view == C.V_RING:
-        draw_ring(full)
-    elif S.view == C.V_BARS:
-        draw_bars(full)
+    U.hold()
+    try:
+        if S.view == C.V_FACE:
+            draw_face(full)
+        elif S.view == C.V_RING:
+            draw_ring(full)
+        elif S.view == C.V_BARS:
+            draw_bars(full)
+    finally:
+        U.release()
 
 
 def animate():
@@ -220,26 +303,34 @@ def redraw_body():
     The header and footer already repaint themselves from head_changed() /
     footer_changed(), so a control change rarely needs more than this.
     """
-    if S.view == C.V_ROLL:
-        U.draw_roll()
-    elif S.view == C.V_FILES:
-        draw_files(True)
-    elif S.view != C.V_HELP:
-        build_ring()
-        draw_cartoon(True)
+    U.hold()
+    try:
+        if S.view == C.V_ROLL:
+            U.draw_roll()
+        elif S.view == C.V_FILES:
+            draw_files(True)
+        elif S.view != C.V_HELP:
+            build_ring()
+            draw_cartoon(True)
+    finally:
+        U.release()
 
 
 def redraw_all():
-    M5.Lcd.fillScreen(C.BG)
-    if S.view == C.V_HELP:
-        U.draw_help()
-        return
-    U.draw_head()
-    if S.view == C.V_ROLL:
-        U.draw_roll()
-    elif S.view == C.V_FILES:
-        draw_files(True)
-    else:
-        build_ring()
-        draw_cartoon(True)
-    U.draw_footer()
+    U.hold()
+    try:
+        M5.Lcd.fillScreen(C.BG)
+        if S.view == C.V_HELP:
+            U.draw_help()
+            return
+        U.draw_head()
+        if S.view == C.V_ROLL:
+            U.draw_roll()
+        elif S.view == C.V_FILES:
+            draw_files(True)
+        else:
+            build_ring()
+            draw_cartoon(True)
+        U.draw_footer()
+    finally:
+        U.release()

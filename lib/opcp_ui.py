@@ -28,6 +28,26 @@ _last_footer = None
 _last_head = None
 
 
+# ------------------------------------------------------------------ batching
+# LovyanGFX takes and drops the SPI bus around every primitive unless it is
+# told to hold it. A view redraw is dozens of primitives, and between them the
+# panel is showing a half-built frame — which is what "flicker" actually is
+# here, more than the cost of the pixels. One pair per frame, and the whole
+# repaint lands at once. Both are no-ops on firmware that lacks them.
+def hold():
+    try:
+        M5.Lcd.startWrite()
+    except Exception:
+        pass
+
+
+def release():
+    try:
+        M5.Lcd.endWrite()
+    except Exception:
+        pass
+
+
 # ------------------------------------------------------------------ fonts
 def _font(name):
     return getattr(M5.Lcd.FONTS, name, None)

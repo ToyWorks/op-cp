@@ -63,9 +63,32 @@ bits, red and blue only 5. An arbitrary grey like `0x0E0E0E` quantises to
 `0x10` land on the same value in all three channels. The simulator reproduces
 this, which is how it was caught.
 
-**8. Redraw only what changed.** `fillScreen()` per frame flickers visibly.
-Use `setTextColor(fg, bg)` so glyphs paint their own background, and `fillRect`
-only the band whose width can change.
+**8. Redraw only what changed — and know what things cost.** Measured on this
+panel, for the 240x69 animation band:
+
+| primitive | cost |
+|---|---|
+| 4x `drawString` (4 chars each) | **7.6 ms** |
+| `fillRect` over the whole band | 6.8 ms |
+| `fillRect` over the face box (128x52) | 2.8 ms |
+| 4x `fillRect` over a bar column | 1.2 ms |
+| 4x `textWidth` | 0.07 ms |
+
+**Text is the expensive primitive here** — four short strings cost more than
+clearing the entire band. Cache what they depend on and redraw them only when
+it changes. Fills are cheap by comparison; what makes them hurt is clearing a
+region and then painting into it, because the panel spends part of every frame
+showing the cleared state. That is what "flicker" is.
+
+So: erase only the box you are about to paint over, and wrap a frame in
+`U.hold()` / `U.release()` (LovyanGFX `startWrite`/`endWrite`) so the whole
+repaint reaches the panel as one transaction instead of dozens.
+
+`make shots` runs a **ghost check**: it drives each animated view 40 frames
+without clearing between them, then diffs the band against the same state drawn
+clean. Any difference fails the build and the coordinates are printed. It is
+what catches an erase box that is too small — or, as happened here, one that is
+too big and eats a neighbour.
 
 ## Sound
 
@@ -196,6 +219,11 @@ angle and refresh behaviour are still hardware questions, and so is taste.
 - **`mpremote exec` does not preserve globals between calls.** You cannot test
   "did main.py run at boot?" by checking whether a global still exists — it
   never will. Write a marker file instead.
+- **`mpremote run host_script.py` imports the modules on `/flash`, not the ones
+  you just edited.** The script comes from the host; everything it imports comes
+  from the device. Benchmark a change without `make push` first and you will
+  measure the old code and conclude, confidently and wrongly, that your change
+  did nothing. (Cost an hour here: a fix worth 10x looked like it was worth 0x.)
 - **USB re-enumerates on reset.** Right after `make deploy`, `mpremote` will
   fail with `Errno 6 Device not configured` until the port comes back. Wait for
   `/dev/cu.usbmodem*` to reappear, then a couple more seconds.

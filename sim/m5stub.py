@@ -134,6 +134,14 @@ class _Lcd:
     def setBrightness(self, v):
         self.brightness = v
 
+    # LovyanGFX batches a frame between these; no-ops on the host, but the
+    # program calls them so the stub has to answer.
+    def startWrite(self):
+        pass
+
+    def endWrite(self):
+        pass
+
     # -- fills ----------------------------------------------------------
     def fillScreen(self, c):
         self.d.rectangle([0, 0, self._w, self._h], fill=rgb565(c))
