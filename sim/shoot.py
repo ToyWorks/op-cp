@@ -101,6 +101,58 @@ for i in (1, 3, 4):
           naming=True)
     snap("palette-%s" % C.PALETTE[i][0].lower())
 
+# --- ghost check ----------------------------------------------------------
+# The face erases only where it WAS, rather than clearing its whole zone, so
+# a wrong erase box leaves a trail that no single snapshot would show. Run a
+# groove for real, without clearing between frames, then compare against the
+# same final state drawn onto a clean screen: any difference IS a ghost.
+def _run_sequence():
+    S.palette = 0
+    S.palette_name, S.accent, S.accent_deep = C.PALETTE[0]
+    S.palette_shown = 0
+    S.next_blink = 1 << 60
+    S.blink = 0
+    S.bpm = 128
+    S.dx = 0
+    frames = []
+    for i in range(48):
+        S.grooving = True
+        S.side = 1 if (i // 6) % 2 == 0 else -1
+        S.hit = max(0, C.HIT_MAX - (i % 12))
+        S.level = 40 + (i * 37) % 200
+        S.hit_intensity = 3 if i % 24 == 0 else 2
+        F.draw(i * 33)
+        frames.append((S.dx, S.hit, S.level, S.hit_intensity, S.side))
+    return frames
+
+
+M5.Lcd.fillScreen(C.BG)
+F._last.clear()
+F.repaint()
+seq = _run_sequence()
+dirty = m5.Lcd.img.copy()
+
+# now the same end state, from a clean screen
+F.repaint()
+S.dx, S.hit, S.level, S.hit_intensity, S.side = seq[-1]
+F._last.clear()
+F.draw(47 * 33)
+clean = m5.Lcd.img.copy()
+
+diff = [1 for a, b in zip(dirty.getdata(), clean.getdata()) if a != b]
+print("\n  ghost check   %d pixels differ after 48 live frames" % len(diff))
+if diff:
+    from PIL import ImageChops
+    gpath = os.path.join(OUT, "_ghosts.png")
+    ImageChops.difference(dirty, clean).resize(
+        (F.W * SCALE, F.H * SCALE), Image.NEAREST).save(gpath)
+    print("  GHOSTS -> %s" % gpath)
+    shots.append(("ghost-live", dirty))
+    shots.append(("ghost-clean", clean))
+    GHOSTS = len(diff)
+else:
+    GHOSTS = 0
+
 # contact sheet
 COLS = 3
 pad, label_h = 8, 16
@@ -118,3 +170,8 @@ for i, (name, img) in enumerate(shots):
     d.text((x + 1, y + ch + 2), name, fill=(170, 170, 170))
 sheet.save(os.path.join(OUT, "_contact.png"))
 print("\n  contact sheet -> %s/_contact.png  (%d shots)" % (OUT, len(shots)))
+
+# A ghost is a correctness bug, not a note: every element must erase exactly
+# what it drew last time. Fail loudly rather than leaving it in a PNG.
+if GHOSTS:
+    raise SystemExit("FAILED: %d ghost pixels on %s" % (GHOSTS, BOARD))

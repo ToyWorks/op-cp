@@ -74,6 +74,10 @@ _hand_tap = None
 _clap_l = None
 _clap_r = None
 CLAP_H = 62
+# where the eyes and the mouth were last drawn, so the next frame can erase
+# exactly that and nothing else
+_eye_box = None
+_mouth_box = None
 _last = {}
 
 
@@ -141,7 +145,10 @@ def layout():
 def repaint():
     """Wipe and forget: the next draw() rebuilds every element. Used after
     a palette change, where the accent moves under everything at once."""
+    global _eye_box, _mouth_box
     _last.clear()
+    _eye_box = None
+    _mouth_box = None
     lcd.fillScreen(C.BG)
 
 
@@ -151,10 +158,19 @@ def _mouth(cx, my, half_w, half_h):
     lcd.fillRect(cx - half_w, my - half_h, 2 * half_w, 2 * half_h + 1, C.FG)
 
 
+def _erase(box):
+    if box:
+        lcd.fillRect(box[0], box[1], box[2], box[3], C.BG)
+
+
 def draw_face(dx, dy, scale, lid, gaze):
-    """Pose changes repaint the whole face zone; a mouth-only change (the
-    loudness breathing between beats) repaints just the mouth's own box —
-    a full-zone fill per 1 px of mouth is what dragged the loop to 3 fps."""
+    """Erase where the face WAS, then draw where it is.
+
+    Filling the whole face zone and redrawing into it is the obvious way and
+    it flickers: a 224x112 black rectangle goes to the panel every frame that
+    the pose eases by a pixel, and the eye sees it. Erasing only the previous
+    eyes' and mouth's own boxes is a fraction of the pixels, and the ones it
+    does touch are overdrawn immediately, so there is nothing to see."""
     cx = FACE_CX + dx
     my = EYE_Y + MOUTH_DY * scale // 100 + dy
     half_w = (G["mouth_base"] + (S.level >> G["m_lvl"])
@@ -163,13 +179,14 @@ def draw_face(dx, dy, scale, lid, gaze):
     pose = (dx, dy, scale, lid, gaze)
     mouth = (my, half_w, half_h)
 
+    global _eye_box, _mouth_box
     if _changed("pose", pose):
         _last["mouth"] = mouth
-        lcd.fillRect(FACE_CX - FACE_HALF_W, FACE_TOP,
-                     2 * FACE_HALF_W, FACE_BOT - FACE_TOP, C.BG)
         edx = EYE_DX * scale // 100
         r = EYE_R * scale // 100
         ey = EYE_Y + dy
+        _erase(_eye_box)
+        _erase(_mouth_box)
         for side in (-1, 1):
             ex = cx + side * edx
             if lid:
@@ -179,17 +196,18 @@ def draw_face(dx, dy, scale, lid, gaze):
                 # excited faces stare harder
                 pr = G["pupil_r"] if scale < 104 else G["pupil_r_hot"]
                 lcd.fillCircle(ex + gaze, ey + 2, pr, C.INK)
+        # one box over both eyes: they move together, and two fills with a
+        # gap between them cost more than one fill across it
+        _eye_box = (cx - edx - r - 1, ey - r - 1,
+                    2 * (edx + r) + 3, 2 * r + 3)
         _mouth(cx, my, half_w, half_h)
+        _mouth_box = (cx - half_w - half_h - 1, my - half_h - 1,
+                      2 * (half_w + half_h) + 3, 2 * half_h + 4)
     elif _changed("mouth", mouth):
-        box = G["mouth_box"]                   # worst capsule half-extent
-        top = EYE_Y + MOUTH_DY * scale // 100 - 30 + dy
-        # never past the face zone's own floor: below it is the pad, which
-        # this path does not redraw, so a taller box would eat a hole in it
-        bot = top + 62
-        if bot > FACE_BOT:
-            bot = FACE_BOT
-        lcd.fillRect(cx - box, top, 2 * box, bot - top, C.BG)
+        _erase(_mouth_box)
         _mouth(cx, my, half_w, half_h)
+        _mouth_box = (cx - half_w - half_h - 1, my - half_h - 1,
+                      2 * (half_w + half_h) + 3, 2 * half_h + 4)
 
 
 def _sparks(corners):
@@ -214,7 +232,7 @@ def draw_clap(burst):
     cw = G["clap_w"]
     lx = G["clap_rest"] + reach
     rx = W - G["clap_rest"] - cw - reach
-    lcd.fillRect(0, y - 6, W, CLAP_H + 12, C.BG)
+    lcd.fillRect(0, y, W, CLAP_H, C.BG)
     if _clap_l is not None:
         lcd.drawPng(_clap_l, lx, y)
         lcd.drawPng(_clap_r, rx, y)
@@ -229,8 +247,10 @@ def draw_clap(burst):
             lcd.drawLine(cx + ex * near, my + ey * near,
                          cx + ex * far, my + ey * far, S.accent)
         if burst:
-            _sparks(((cx - 3, my - far - 10), (cx - 3, my + far + 4),
-                     (cx - far - 10, my - 3), (cx + far + 4, my - 3)))
+            # at the ends of the diagonals, so every pixel this draws stays
+            # inside the band the next frame will clear
+            _sparks(((cx - far - 3, my - far - 3), (cx + far - 3, my - far - 3),
+                     (cx - far - 3, my + far - 3), (cx + far - 3, my + far - 3)))
 
 
 def draw_bar(tap):
@@ -252,15 +272,18 @@ def draw_hand(tap, burst):
     if _hand_up is None:
         return
     top = G["hand_top"]
-    lcd.fillRect(HAND_X, top, W - HAND_X, PAD_Y + PAD_H + 6 - top, C.BG)
+    # everything this function draws — sprite, pad AND sparks — has to live
+    # inside this one rectangle, or the bits outside it are never erased
+    lcd.fillRect(HAND_X, top, W - HAND_X, PAD_Y + PAD_H + 10 - top, C.BG)
     # the pad lights while the hand is down
     lcd.fillRoundRect(PAD_X, PAD_Y, PAD_W, PAD_H, 8,
                       S.accent if tap else S.accent_deep)
     if tap:
         lcd.drawPng(_hand_tap, HAND_X + 3, HAND_TAP_Y)
         if burst:
-            _sparks(((PAD_X - 8, PAD_Y - 6), (PAD_X + PAD_W + 2, PAD_Y - 6),
-                     (PAD_X - 6, PAD_Y + PAD_H), (PAD_X + PAD_W, PAD_Y + PAD_H)))
+            _sparks(((PAD_X, PAD_Y - 8), (PAD_X + PAD_W - 6, PAD_Y - 8),
+                     (PAD_X, PAD_Y + PAD_H + 2),
+                     (PAD_X + PAD_W - 6, PAD_Y + PAD_H + 2)))
     else:
         lcd.drawPng(_hand_up, HAND_X + 3, HAND_UP_Y)
 
@@ -287,7 +310,26 @@ def draw_info(now):
 
 
 def draw(now):
-    """One face frame, rate-limited by the caller via S.next_anim."""
+    """One face frame, rate-limited by the caller via S.next_anim.
+
+    The whole frame goes inside one startWrite/endWrite pair: LovyanGFX then
+    holds the SPI bus for the lot instead of taking and dropping it per
+    primitive, which is the difference between a frame appearing and a frame
+    assembling itself in front of you."""
+    try:
+        lcd.startWrite()
+    except Exception:
+        pass
+    try:
+        _draw(now)
+    finally:
+        try:
+            lcd.endWrite()
+        except Exception:
+            pass
+
+
+def _draw(now):
     if S.blink and now > S.blink:
         S.blink = 0
     if not S.blink and now > S.next_blink:

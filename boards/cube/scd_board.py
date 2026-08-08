@@ -38,7 +38,11 @@ MIC_PORT = 1             # port 0 works too; 1 leaves M5Unified's own alone
 RATE = 16000             # FRAME/RATE = one 16 ms energy frame
 FRAME = 256
 # --- buttons (active low, internal pull-ups; measured 1 at rest) ----------
-PIN_BOOT, PIN_UP, PIN_DOWN = 0, 39, 40
+# GPIO0 is BOOT, and on an ESP32-S3 that is the download-mode strapping pin:
+# held low at reset the chip never starts the firmware and the screen simply
+# stays black. It is a terrible thing to invite anyone to press, so the app
+# does not use it at all — the two side buttons carry everything.
+PIN_UP, PIN_LINK = 39, 40
 BTN_POLL_MS = 30         # edge-detected, so this only bounds the latency
 
 lcd = None
@@ -50,7 +54,7 @@ _cur = 0
 _full = False
 _mic_ok = False
 _pins = None
-_prev = (1, 1, 1)
+_prev = (1, 1)
 
 
 def begin():
@@ -162,28 +166,26 @@ def mic_poll():
 def _buttons_begin():
     global _pins
     try:
-        _pins = (Pin(PIN_BOOT, Pin.IN, Pin.PULL_UP),
-                 Pin(PIN_UP, Pin.IN, Pin.PULL_UP),
-                 Pin(PIN_DOWN, Pin.IN, Pin.PULL_UP))
+        _pins = (Pin(PIN_UP, Pin.IN, Pin.PULL_UP),
+                 Pin(PIN_LINK, Pin.IN, Pin.PULL_UP))
     except Exception:
         _pins = None
 
 
 def poll_input(now):
     """(toggle_link, palette_step) — one action per falling edge, not per
-    poll. BOOT toggles the ear; the top button steps the colour forward and
-    the one below it steps back."""
+    poll. The top button walks the colour; the one below it toggles the ear."""
     global _prev
     if _pins is None or time.ticks_diff(now, S.next_btn) < 0:
         return (False, 0)
     S.next_btn = time.ticks_add(now, BTN_POLL_MS)
     try:
-        level = (_pins[0].value(), _pins[1].value(), _pins[2].value())
+        level = (_pins[0].value(), _pins[1].value())
     except Exception:
         return (False, 0)
     edge = tuple(p == 1 and c == 0 for p, c in zip(_prev, level))
     _prev = level
-    return (edge[0], (1 if edge[1] else 0) - (1 if edge[2] else 0))
+    return (edge[1], 1 if edge[0] else 0)
 
 
 # ---------------------------------------------------------------------- body

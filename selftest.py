@@ -282,9 +282,12 @@ else:
     t, step = BOARD.poll_input(time.ticks_ms())
     print("  idle read     toggle=%s step=%d" % (t, step))
     check(not t and step == 0, "nothing is reported while nothing is pressed")
-    check(BOARD._pins is not None, "the three side buttons claimed their pins")
+    check(BOARD._pins is not None, "both side buttons claimed their pins")
     check(all(p.value() == 1 for p in BOARD._pins),
-          "and all read high at rest (active-low with pull-ups)")
+          "and read high at rest (active-low with pull-ups)")
+    # GPIO0 is the download-mode strap: held low at reset the chip never
+    # starts, so the app must not invite anyone to press it
+    check(0 not in (BOARD.PIN_UP, BOARD.PIN_LINK), "nothing is bound to BOOT")
 
 banner("every face state renders")
 for name, groove, lvl, hit in (("idle", False, 0, 0),
