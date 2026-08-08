@@ -5,6 +5,7 @@ import time
 
 import opcp_audio as A
 import opcp_conf as C
+import opcp_link as L
 import opcp_screen as SC
 import opcp_ui as U
 from opcp_state import S
@@ -51,33 +52,100 @@ def clear_track():
 
 
 # ------------------------------------------------------------------ storage
-def save():
+def slot_path(i):
+    return "%s/opcp%d.json" % (S.save_dir, i + 1)
+
+
+def storage_init():
+    """Prefer the SD card when one is inserted; fall back to /flash.
+
+    Patterns on the card survive a firmware reflash, which /flash does not.
+    The Cardputer-ADV TF slot is SPI on sck 40 / miso 39 / mosi 14 / cs 12
+    (the official pin map). slot=3, because the display owns SPI2 and slot=2
+    fails with ESP_ERR_INVALID_STATE — measured on device, with M5 up.
+    UIFlow2 v2.5.0 does not mount the card on its own.
+    """
+    import os
+    try:
+        os.listdir("/sd")                    # already mounted (soft reset)
+        S.save_dir = "/sd"
+    except Exception:
+        try:
+            import machine
+            os.mount(machine.SDCard(slot=3, width=1, sck=40, miso=39, mosi=14,
+                                    cs=12, freq=20000000), "/sd")
+            S.save_dir = "/sd"
+        except Exception:
+            S.save_dir = "/flash"            # no card is not an error
+
+    # one-time migration: the single-file era's opcp.json becomes slot 1
+    try:
+        legacy = S.save_dir + "/opcp.json"
+        os.stat(legacy)
+        try:
+            os.stat(slot_path(0))
+        except OSError:
+            os.rename(legacy, slot_path(0))
+    except OSError:
+        pass
+    scan_slots()
+
+
+def scan_slots():
+    """Refresh the FILES view's cache of what lives in each slot."""
+    import json
+    for i in range(C.SLOTS):
+        try:
+            with open(slot_path(i)) as f:
+                d = json.load(f)
+            S.slot_meta[i] = (d.get("bpm", 0), d.get("scale", 0))
+        except Exception:
+            S.slot_meta[i] = None
+
+
+def save_slot(i):
+    # set_status, not a bare S.status assignment: without the timestamp the
+    # header never shows the word and saving looks like nothing happened
     try:
         import json
-        with open(C.SAVE_PATH, "w") as f:
+        with open(slot_path(i), "w") as f:
             json.dump({"v": 2, "pat": S.patterns, "bpm": S.bpm,
                        "scale": S.scale_i, "root": S.root, "oct": S.octave}, f)
-        S.status = "saved"
+        S.slot_meta[i] = (S.bpm, S.scale_i)
+        S.set_status("SAVED %d" % (i + 1))
     except Exception:
-        S.status = "save failed"
+        S.set_status("SAVE FAIL")
 
 
-def load():
+def load_slot(i):
+    import json
     try:
-        import json
-        with open(C.SAVE_PATH) as f:
+        with open(slot_path(i)) as f:
             d = json.load(f)
-        if d.get("v") != 2:
-            S.status = "old save"
-            return
-        S.patterns = d["pat"]
-        S.bpm = d["bpm"]
-        S.scale_i = d["scale"]
-        S.root = d["root"]
-        S.octave = d["oct"]
-        S.status = "loaded"
     except Exception:
-        S.status = "no save"
+        S.set_status("NO SAVE")
+        return
+    if d.get("v") != 2:
+        S.set_status("OLD SAVE")
+        return
+    S.patterns = d["pat"]
+    S.bpm = d["bpm"]
+    S.scale_i = d["scale"]
+    S.root = d["root"]
+    S.octave = d["oct"]
+    S.set_status("LOADED %d" % (i + 1))
+
+
+def load_preset(n):
+    """Drop a factory pattern into the CURRENT bank; storage is untouched."""
+    name, bpm, sc, oc, tracks = C.PRESETS[n]
+    pat = S.patterns[S.pat]
+    for t in range(C.TRACKS):
+        pat[t][:] = list(tracks[t])
+    S.bpm = bpm
+    S.scale_i = sc
+    S.octave = list(oc)
+    S.set_status(name)
 
 
 # ------------------------------------------------------------------ transport
@@ -104,13 +172,20 @@ def advance():
         chs.extend(A.voices_for(t, S.patterns[S.pat][t][S.play_step]))
     A.balance(chs)
 
+    hits = 0
+    drum = 255
     for t in range(C.TRACKS):
         v = S.patterns[S.pat][t][S.play_step]
         if v is not None and not S.muted[t]:
             S.hit[t] = C.HIT_MAX
+            hits |= 1 << t
             if t != 3:
                 S.last_semi = v
+            else:
+                drum = v % len(C.DRUMS)
         A.voice(t, v, spread=t * C.SPREAD_MS)
+    if S.link_on:
+        L.send_step(S.play_step, hits, drum)   # sound first, then the word
 
     if S.steps()[S.play_step] is not None:
         S.flash[S.play_step] = C.FLASH_MAX
@@ -147,9 +222,13 @@ def start(from_step=None):
     S.playing = True
     S.play_step = C.STEPS - 1 if from_step is None else from_step
     S.next_tick = time.ticks_ms()
+    if S.link_on:
+        L.send_transport(True)
 
 
 def stop():
     S.playing = False
     S.recording = False
     S.clear_flashes()
+    if S.link_on:
+        L.send_transport(False)

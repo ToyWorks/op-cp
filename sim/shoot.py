@@ -104,6 +104,18 @@ for name, v in (("face", C.V_FACE), ("ring", C.V_RING), ("bars", C.V_BARS)):
     SC.redraw_all()
     snap("%s-idle" % name)
 
+# --- files ----------------------------------------------------------------
+S.view = C.V_FILES
+S.slot_meta = [(112, 1), None, (98, 0), None, (140, 2), None, None, (76, 1)]
+SC.redraw_all()
+snap("files")
+
+S.files_arm = True
+S.set_status("SAVE 1-8?")
+SC.redraw_all()
+snap("files-armed")
+S.files_arm = False
+
 # --- help -----------------------------------------------------------------
 S.view = C.V_HELP
 SC.redraw_all()

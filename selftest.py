@@ -38,12 +38,16 @@ class FakeKb:
 
     def __init__(self):
         self.queue = []
+        self.ctrl = False
 
     def feed(self, codes):
         self.queue = list(codes)
 
     def get_key(self):
         return self.queue.pop(0) if self.queue else -1
+
+    def is_key_pressed(self, keycode):
+        return self.ctrl and keycode == C.KEY_CTRL
 
 
 def banner(s):
@@ -111,7 +115,7 @@ for v in ("240", "+2", "MIN", "16"):
 U.M5.Lcd.setFont(U.TINY)
 # the footer draws hero value, its label, and a right-hand readout on one line
 worst_hero = max(U.M5.Lcd.textWidth(l) for l in
-                 ("BPM", "OCT", "SCALE", "PATTERN", "VOL", "STEP 16", "NOTE"))
+                 ("BPM", "OCT", "SCALE", "BANK", "VOL", "STEP 16", "NOTE"))
 worst_right = 0
 for sc, _ in C.SCALES:
     for oc in ("+2", "-2", "--"):
@@ -119,18 +123,22 @@ for sc, _ in C.SCALES:
 worst_right = max(worst_right, U.M5.Lcd.textWidth("STRAIGHT"))
 U.M5.Lcd.setFont(U.HERO)
 hero_w = max(U.spaced_width(v, C.HERO_TRACK) for v in ("240", "MIN", "C#"))
-total = 4 + hero_w + 6 + worst_hero + 8 + worst_right + 4
+total = U.MARGIN + hero_w + 6 + worst_hero + 8 + worst_right + U.MARGIN
 print("  footer worst case: hero %d + label %d + readout %d = %d of %d"
       % (hero_w, worst_hero, worst_right, total, U.W))
 check(total <= U.W, "footer worst case fits on one line (%d <= %d)" % (total, U.W))
 
 U.M5.Lcd.setFont(U.TINY)
-head_w = 4 + max(U.M5.Lcd.textWidth(n) for n in C.TRACK_NAMES) + 8 + 4 * 8
+head_w = U.MARGIN + max(U.M5.Lcd.textWidth(n) for n in C.TRACK_NAMES) + 8 + 4 * 8
 worst_status = max(U.M5.Lcd.textWidth(x) for x in
-                   ("STRAIGHT", "UNMUTE", "ARMED OFF", "P1") + C.VIEW_NAMES)
-print("  header worst case: left %d + status %d + pip 12 = %d of %d"
-      % (head_w, worst_status, head_w + worst_status + 12, U.W))
-check(head_w + worst_status + 12 <= U.W, "header worst case fits")
+                   ("STRAIGHT", "UNMUTE", "ARMED OFF", "P1", "SAVE 1-8?",
+                    "SAVED 8", "SAVE FAIL", "LOADED 8", "NO SAVE", "OLD SAVE",
+                    "LINK ON", "LINK OFF", "LINK FAIL")
+                   + C.VIEW_NAMES + tuple(p[0] for p in C.PRESETS))
+head_total = head_w + 4 + worst_status + 4 + 6 + U.MARGIN
+print("  header worst case: left %d + status %d + square = %d of %d"
+      % (head_w, worst_status, head_total, U.W))
+check(head_total <= U.W, "header worst case fits")
 
 right = bottom = 0
 for x, y, text, _ in U.help_layout():
@@ -142,6 +150,22 @@ for x, y, text, _ in U.help_layout():
 print("  help page occupies %dx%d of %dx%d" % (right, bottom, U.W, U.H))
 check(right <= U.W - 2, "help page fits horizontally (%d <= %d)" % (right, U.W - 2))
 check(bottom <= U.H, "help page fits vertically (%d <= %d)" % (bottom, U.H))
+
+kp, kkw, kkh, kx0, ky0 = U.keybed_geom()
+kb_right = kx0 + kp * len(C.WHITE_KEYS) - 1
+kb_bottom = ky0 + 2 * kkh + 1
+print("  keybed        x %d..%d  y %d..%d" % (kx0, kb_right, ky0, kb_bottom))
+check(kx0 >= 0 and kb_right <= U.W, "keybed fits horizontally")
+check(kb_bottom < U.TINY_H * 3, "keybed leaves room for the command list")
+
+U.M5.Lcd.setFont(U.TINY)
+colw = (U.W - 2 * U.MARGIN) // 3
+worst_slot = 12 + max(U.M5.Lcd.textWidth("240 %s" % sc) for sc, _ in C.SCALES)
+worst_pre = 12 + max(U.M5.Lcd.textWidth(p[0]) for p in C.PRESETS)
+print("  files cols    %dpx wide; slot row %d, preset row %d"
+      % (colw, worst_slot, worst_pre))
+check(worst_slot <= colw - 4, "files slot row fits its column")
+check(worst_pre <= colw - 4, "files preset row fits its column")
 
 banner("every view renders")
 for idx, name in enumerate(C.VIEW_NAMES):
@@ -174,19 +198,42 @@ S.kb, S.kb_tick = fake, None
 
 bindings = (C.WHITE_KEYS + "".join(C.BLACK_KEYS.keys())
             + C.STEP_KEYS_A + C.STEP_KEYS_B
-            + " qri'./[]-=`90\\")
+            + " ./-=`90\\")
+ctrl_bindings = "gcmp[]fn" + "ax"    # the ctrl layer, plus swallowed letters
+                                     # ('n' appears once per track: 4 toggles
+                                     # leave the link exactly as it started)
 for t in range(C.TRACKS):
     S.track = t
+    S.view = C.V_ROLL
     for ch in bindings:
         fake.feed([ord(ch)])
         __import__('opcp_keys').on_key(None)
         app.loop()
+    fake.ctrl = True
+    for ch in ctrl_bindings:
+        fake.feed([ord(ch)])
+        __import__('opcp_keys').on_key(None)
+        app.loop()
+    fake.ctrl = False
     fake.feed([13])              # ENTER: record arm
     __import__('opcp_keys').on_key(None)
     app.loop()
-print("  drove %d keys x %d tracks, no exception"
-      % (len(bindings) + 1, C.TRACKS))
+print("  drove %d bare + %d ctrl keys x %d tracks, no exception"
+      % (len(bindings) + 1, len(ctrl_bindings), C.TRACKS))
 check(True, "all key bindings dispatch cleanly")
+
+# FILES: bare digits load, s arms a save, preset keys drop a pattern in
+S.view = C.V_FILES
+S.dirty_all = True
+app.loop()
+for ch, expect in (("s", "SAVE 1-8?"), ("4", "SAVED 4"),
+                   ("4", "LOADED 4"), ("w", C.PRESETS[0][0])):
+    fake.feed([ord(ch)])
+    __import__('opcp_keys').on_key(None)
+    app.loop()
+    check(S.status == expect, "FILES key %r -> %r" % (ch, S.status))
+check(S.slot_meta[3] is not None, "slot meta cache updated by save")
+S.view = C.V_ROLL
 
 S.kb, S.kb_tick = real_kb, real_tick
 S.playing = False
@@ -224,13 +271,34 @@ if A.kit_ok:
 else:
     warn(False, "no PCM kit — the app is falling back to tone() beeps")
 
+banner("esp-now link")
+import opcp_link as L
+check(L.begin(), "espnow up on channel %d" % C.LINK_CHANNEL)
+L.send_step(0, 0x0B, 0)
+L.send_transport(True)
+L.send_transport(False)
+check(True, "step and transport broadcasts do not raise")
+
 banner("persistence")
-Q.save()
+print("  save dir      %s   slots [%s]"
+      % (S.save_dir, "".join("x" if m else "-" for m in S.slot_meta)))
+warn(S.save_dir == "/sd", "no SD card mounted — saves are on /flash only")
+Q.save_slot(0)
 print("  save -> %s" % S.status)
-check(S.status == "saved", "pattern saved to %s" % C.SAVE_PATH)
-Q.load()
+check(S.status == "SAVED 1", "pattern saved (status %r)" % S.status)
+try:
+    with open(Q.slot_path(0)) as f:
+        f.read(1)
+    on_disk = True
+except Exception:
+    on_disk = False
+check(on_disk, "save file readable at %s" % Q.slot_path(0))
+Q.load_slot(0)
 print("  load -> %s" % S.status)
-check(S.status == "loaded", "pattern loaded back")
+check(S.status == "LOADED 1", "pattern loaded back")
+Q.load_preset(1)
+check(S.bpm == C.PRESETS[1][1],
+      "preset %s applies its tempo (%d)" % (C.PRESETS[1][0], S.bpm))
 
 banner("memory under load")
 # A single free-heap snapshot says very little: MicroPython's heap sawtooths

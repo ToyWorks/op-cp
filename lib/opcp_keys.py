@@ -83,18 +83,85 @@ def on_key(_kb):
     if not ch:
         return
 
+    # The control layer: held ctrl turns the letters back into functions.
+    # is_key_pressed reads the driver's cached pressed-key table, so this is
+    # a dict lookup, not an I2C transaction; a keyboard without the API (the
+    # plain Cardputer's) just never reports ctrl.
+    try:
+        ctrl = S.kb.is_key_pressed(C.KEY_CTRL)
+    except Exception:
+        ctrl = False
+
+    if ctrl:
+        if ch == "g":
+            Q.generate()
+            S.set_status("GEN")
+        elif ch == "c":
+            Q.clear_track()
+            S.set_status("CLEAR")
+        elif ch == "m":
+            S.muted[S.track] = not S.muted[S.track]
+            S.set_status("MUTE" if S.muted[S.track] else "UNMUTE")
+        elif ch == "p":
+            S.pat = (S.pat + 1) % C.PATTERNS
+            S.set_hero("BANK", S.pat + 1)
+        elif ch == "[":
+            S.bpm = max(40, S.bpm - 4)
+            S.set_hero("BPM", S.bpm)
+        elif ch == "]":
+            S.bpm = min(240, S.bpm + 4)
+            S.set_hero("BPM", S.bpm)
+        elif ch == "f":
+            S.view = C.V_FILES
+            S.files_arm = False
+            S.set_status("FILES")
+            S.dirty_all = True
+        elif ch == "n":
+            S.link_on = not S.link_on
+            if S.link_on:
+                import opcp_link as L
+                S.set_status("LINK ON" if L.begin() else "LINK FAIL")
+            else:
+                S.set_status("LINK OFF")
+        else:
+            return                           # ctrl+anything else is swallowed
+        if ch in "gcmp":
+            S.dirty_body = True
+        return
+
     if ch == "\\":
         S.view = (S.view + 1) % len(C.VIEW_NAMES)
+        S.files_arm = False
         S.set_status(C.VIEW_NAMES[S.view])
         S.dirty_all = True
         return
 
-    if S.view == C.V_HELP:                   # help page doubles as save/load
-        if ch == "s":
-            Q.save()
-        elif ch == "l":
-            Q.load()
+    if S.view == C.V_HELP:                   # help is a poster, not a mode
         return
+
+    if S.view == C.V_FILES:
+        i = C.STEP_KEYS_A.find(ch)           # the slot digits are the step row
+        if i >= 0:
+            if S.files_arm:
+                S.files_arm = False
+                Q.save_slot(i)
+            else:
+                Q.load_slot(i)
+            S.dirty_body = True
+            return
+        if ch in C.PRESET_KEYS:
+            if not S.files_arm:
+                Q.load_preset(C.PRESET_KEYS.index(ch))
+                S.dirty_body = True
+            return
+        if ch == "s":
+            S.files_arm = not S.files_arm
+            S.set_status("SAVE 1-8?" if S.files_arm else "FILES")
+            S.dirty_body = True
+            return
+        if ch != " ":
+            return
+        # SPACE falls through to the transport: audition presets in place
 
     if ch in C.WHITE_KEYS:
         i = C.WHITE_KEYS.index(ch)
@@ -115,30 +182,12 @@ def on_key(_kb):
         else:
             Q.start()
         S.set_status("PLAY" if S.playing else "STOP")
-    elif ch == "q":
-        Q.generate()
-        S.set_status("GEN")
-    elif ch == "r":
-        Q.clear_track()
-        S.set_status("CLEAR")
-    elif ch == "i":
-        S.muted[S.track] = not S.muted[S.track]
-        S.set_status("MUTE" if S.muted[S.track] else "UNMUTE")
-    elif ch == "'":
-        S.pat = (S.pat + 1) % C.PATTERNS
-        S.set_hero("PATTERN", S.pat + 1)
     elif ch == ".":
         S.track = (S.track - 1) % C.TRACKS
         S.clear_flashes()
     elif ch == "/":
         S.track = (S.track + 1) % C.TRACKS
         S.clear_flashes()
-    elif ch == "[":
-        S.bpm = max(40, S.bpm - 4)
-        S.set_hero("BPM", S.bpm)
-    elif ch == "]":
-        S.bpm = min(240, S.bpm + 4)
-        S.set_hero("BPM", S.bpm)
     elif ch == "-":
         if S.track != 3:
             S.octave[S.track] = max(-2, S.octave[S.track] - 1)
@@ -159,5 +208,5 @@ def on_key(_kb):
         return
     # tempo / octave / scale / swing / volume touch nothing but the footer, and
     # the loop repaints that on its own when footer_changed() notices.
-    if ch in " qri'./":
+    if ch in " ./":
         S.dirty_body = True

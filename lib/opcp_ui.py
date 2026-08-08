@@ -21,6 +21,8 @@ HERO = MID = TINY = None
 HERO_H = MID_H = TINY_H = 0
 ROLL_X = ROLL_Y = ROLL_W = ROLL_H = SW = 0
 FOOT_Y = FOOT_H = 0
+MARGIN = 0   # one left/right inset for every band — the roll's own inset, so
+             # the header, the footer and the roll share their vertical edges
 
 _last_footer = None
 _last_head = None
@@ -71,7 +73,7 @@ def pick_fonts():
 
 
 def layout():
-    global W, H, ROLL_X, ROLL_Y, ROLL_W, ROLL_H, SW, FOOT_Y, FOOT_H
+    global W, H, ROLL_X, ROLL_Y, ROLL_W, ROLL_H, SW, FOOT_Y, FOOT_H, MARGIN
     W = M5.Lcd.width()
     H = M5.Lcd.height()
     pick_fonts()
@@ -79,6 +81,7 @@ def layout():
     SW = (W - 16) // C.STEPS
     ROLL_W = SW * C.STEPS
     ROLL_X = (W - ROLL_W) // 2
+    MARGIN = ROLL_X
 
     FOOT_H = HERO_H
     FOOT_Y = H - FOOT_H
@@ -148,8 +151,13 @@ def draw_step(i):
         idx = val if val >= 0 else 0
         if idx > rows - 1:
             idx = rows - 1
-        M5.Lcd.fillRect(x, top + (rows - 1 - idx) * rh, w,
-                        rh if rh < 3 else rh - 1, note_color(i))
+        # row edges spread the integer-division remainder over the rows, so the
+        # lowest note reaches the bottom of the lane instead of leaving a dead
+        # band of rows*rh vs lane_h slack under it
+        r = rows - 1 - idx
+        y0 = top + (r * lane_h) // rows
+        nh = top + ((r + 1) * lane_h) // rows - y0
+        M5.Lcd.fillRect(x, y0, w, nh if nh < 3 else nh - 1, note_color(i))
 
     # the head mark rides above the lanes so a note never hides the playhead
     if live:
@@ -184,8 +192,8 @@ def draw_head():
     M5.Lcd.setTextColor(C.MUTED if S.muted[S.track]
                         else C.TRACK_COLORS[S.track], C.BG)
     name = C.TRACK_NAMES[S.track]
-    M5.Lcd.drawString(name, 4, 0)
-    x = 4 + M5.Lcd.textWidth(name) + 8
+    M5.Lcd.drawString(name, MARGIN, 0)
+    x = MARGIN + M5.Lcd.textWidth(name) + 8
 
     # four pips: the current track solid, the rest barely there. A muted track
     # reads as a hollow outline rather than as a second colour.
@@ -199,14 +207,15 @@ def draw_head():
 
     right = S.status if fresh(S.status_until) else "P%d" % (S.pat + 1)
     M5.Lcd.setTextColor(C.ACCENT if S.recording else C.DIM, C.BG)
-    M5.Lcd.drawString(right, W - M5.Lcd.textWidth(right) - 12, 0)
+    sq = W - MARGIN - 6          # the state square's right edge sits on the grid
+    M5.Lcd.drawString(right, sq - 4 - M5.Lcd.textWidth(right), 0)
 
     if S.recording:
-        M5.Lcd.fillRect(W - 8, 4, 6, 6, C.ACCENT)
+        M5.Lcd.fillRect(sq, 4, 6, 6, C.ACCENT)
     elif S.playing:
-        M5.Lcd.fillRect(W - 8, 4, 6, 6, C.FG)
+        M5.Lcd.fillRect(sq, 4, 6, 6, C.FG)
     else:
-        M5.Lcd.drawRect(W - 8, 4, 6, 6, C.FAINT)
+        M5.Lcd.drawRect(sq, 4, 6, 6, C.FAINT)
     _last_head = head_state()
 
 
@@ -253,70 +262,120 @@ def draw_footer():
     """
     global _last_footer
     M5.Lcd.fillRect(0, FOOT_Y - 2, W, H - FOOT_Y + 2, C.BG)
-    M5.Lcd.fillRect(0, FOOT_Y - 2, W, 1, C.FAINT)
+    M5.Lcd.fillRect(MARGIN, FOOT_Y - 2, W - 2 * MARGIN, 1, C.FAINT)
 
     label, value = S.hero()
     M5.Lcd.setFont(HERO)
     M5.Lcd.setTextColor(C.FG, C.BG)
-    draw_spaced(value, 4, FOOT_Y + (FOOT_H - HERO_H) // 2, C.HERO_TRACK)
+    draw_spaced(value, MARGIN, FOOT_Y + (FOOT_H - HERO_H) // 2, C.HERO_TRACK)
     vw = spaced_width(value, C.HERO_TRACK)
 
     M5.Lcd.setFont(TINY)
     M5.Lcd.setTextColor(C.DIM, C.BG)
-    M5.Lcd.drawString(label, 4 + vw + 6, FOOT_Y + FOOT_H - TINY_H - 3)
+    M5.Lcd.drawString(label, MARGIN + vw + 6, FOOT_Y + FOOT_H - TINY_H - 3)
 
     r1, r2 = _readouts()
     top = FOOT_Y + (FOOT_H - 2 * TINY_H) // 2
     for n, s in ((0, r1), (1, r2)):
         M5.Lcd.setTextColor(C.DIM if n else C.FG, C.BG)
-        M5.Lcd.drawString(s, W - M5.Lcd.textWidth(s) - 4, top + n * TINY_H)
+        M5.Lcd.drawString(s, W - M5.Lcd.textWidth(s) - MARGIN, top + n * TINY_H)
     _last_footer = (label, value, r1, r2)
 
 
 # ------------------------------------------------------------------ help
+# Each row is (key, action) segments: keys bright, actions dim, so the eye can
+# scan just the keys. No track colour appears here — on every other screen a
+# lit colour means "the track you are editing", and help must not dilute that.
+# ^X means ctrl+X: the functions that used to squat in the piano rows.
 HELP = (
-    ("  w e  t y u  o p", C.WHITE),
-    (" a s d f g h j k l ;", C.WHITE),
-    ("1-8 z-,  steps", C.DIM),
-    ("SPACE  play/stop", C.DIM),
-    ("ENTER  record", C.DIM),
-    ("\\  next view", C.ORANGE),
-    ("q gen   r clear", C.DIM),
-    ("i mute  ' pattern", C.DIM),
-    ("[ ] bpm  - = oct", C.DIM),
-    ("` scale  9 swing", C.DIM),
-    ("0 vol   . / track", C.DIM),
-    ("s save  l load", C.DIM),
+    (("SPACE", C.FG), ("play/stop", C.DIM)),
+    (("ENTER", C.FG), ("record", C.DIM)),
+    (("\\", C.FG), ("views", C.DIM), ("^F", C.FG), ("files", C.DIM)),
+    (("^G", C.FG), ("gen", C.DIM), ("^C", C.FG), ("clear", C.DIM)),
+    (("^M", C.FG), ("mute", C.DIM), ("^P", C.FG), ("bank", C.DIM)),
+    (("^[ ^]", C.FG), ("bpm", C.DIM), ("^N", C.FG), ("link", C.DIM)),
+    (("- =", C.FG), ("octave", C.DIM)),
+    (("`", C.FG), ("scale", C.DIM), ("9", C.FG), ("swing", C.DIM)),
+    (("0", C.FG), ("volume", C.DIM)),
+    ((". /", C.FG), ("track", C.DIM)),
+    (("1-8 z-,", C.FG), ("steps", C.DIM)),
 )
 
 
-def help_layout():
-    """Pack the help lines into as many columns as the panel needs.
+def keybed_geom():
+    """(pitch, cap w, cap h, left x, top y) of the keybed diagram.
 
-    Single-column help does not fit: twelve lines at this font are taller than
-    the panel. Rather than hardcode a split, fill a column until it runs out of
-    height and start the next one, sized to the widest string it holds. Draw
-    and self-test share this function so both agree on the result.
+    Shared by draw and layout so the command list starts below the real bottom
+    of the diagram, whatever the panel size.
+    """
+    n = len(C.WHITE_KEYS)
+    p = (W - 2 * MARGIN + 1) // n
+    return p, p - 1, TINY_H + 2, (W - (p * n - 1)) // 2, 2
+
+
+def _black_gap(semi):
+    """Which white-key boundary a black key sits over, from its semitone."""
+    for i, s in enumerate(C.WHITE_SEMI):
+        if s > semi:
+            return i
+    return len(C.WHITE_SEMI) - 1
+
+
+def draw_keybed():
+    """The middle two keyboard rows drawn as the piano they are.
+
+    White caps carry the home row; the black caps sit in the gaps above, offset
+    by half a key, exactly as on the physical keybed. A picture of the mapping
+    beats the two rows of monospaced art this page used to open with.
+    """
+    p, kw, kh, x0, y0 = keybed_geom()
+    M5.Lcd.setFont(TINY)
+    wy = y0 + kh + 1
+    for i, ch in enumerate(C.WHITE_KEYS):
+        x = x0 + i * p
+        M5.Lcd.fillRect(x, wy, kw, kh, C.FG)
+        M5.Lcd.setTextColor(C.INK, C.FG)
+        M5.Lcd.drawString(ch, x + (kw - M5.Lcd.textWidth(ch)) // 2, wy + 1)
+    for ch, semi in C.BLACK_KEYS.items():
+        x = x0 + _black_gap(semi) * p - p // 2
+        M5.Lcd.fillRect(x, y0, kw, kh, C.FAINT)
+        M5.Lcd.setTextColor(C.FG, C.FAINT)
+        M5.Lcd.drawString(ch, x + (kw - M5.Lcd.textWidth(ch)) // 2, y0 + 1)
+
+
+def help_layout():
+    """Position every (text, colour) segment of the command list.
+
+    The list packs into columns under the keybed: fill a column until it runs
+    out of height, then start the next one, sized to the widest row it holds.
+    Within a row a key token is followed tightly by its action, with a wider
+    gap before the next pair. Draw and self-test share this function so both
+    agree on the result.
     """
     M5.Lcd.setFont(TINY)
-    lh = TINY_H + 1
-    per_col = max(1, (H - 4) // lh)
+    _, _, kh, _, y0 = keybed_geom()
+    top = y0 + 2 * kh + 6
+    lh = TINY_H
+    per_col = max(1, (H - top - 2) // lh)
     out = []
-    x, y, col_w = 4, 3, 0
-    for i, (text, c) in enumerate(HELP):
+    x0, y, col_w = MARGIN, top, 0
+    for i, row in enumerate(HELP):
         if i and i % per_col == 0:
-            x += col_w + 8
-            y, col_w = 3, 0
-        out.append((x, y, text, c))
-        w = M5.Lcd.textWidth(text)
-        if w > col_w:
-            col_w = w
+            x0 += col_w + 14
+            y, col_w = top, 0
+        x = x0
+        for n, (text, c) in enumerate(row):
+            out.append((x, y, text, c))
+            x += M5.Lcd.textWidth(text) + (3 if n % 2 == 0 else 8)
+        if x - x0 > col_w:
+            col_w = x - x0
         y += lh
     return out
 
 
 def draw_help():
     M5.Lcd.fillScreen(C.BG)
+    draw_keybed()
     M5.Lcd.setFont(TINY)
     for x, y, text, c in help_layout():
         M5.Lcd.setTextColor(c, C.BG)

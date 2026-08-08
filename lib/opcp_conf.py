@@ -9,7 +9,9 @@ STEPS = 16
 TRACKS = 4
 PATTERNS = 4
 SWING_PCT = 18
-SAVE_PATH = "/flash/opcp.json"
+SLOTS = 8                    # save slots — one per step key on the top row
+LINK_CHANNEL = 1             # ESP-NOW broadcast to the StackChan; both ends
+                             # pin channel 1 (see lib/opcp_link.py)
 
 # ------------------------------------------------------------------ audio
 VOLUME = 255                 # master out, 0-255
@@ -60,8 +62,8 @@ FLASH_MS = 45
 HIT_MAX = 6
 ANIM_MS = 55
 
-V_ROLL, V_FACE, V_RING, V_BARS, V_HELP = 0, 1, 2, 3, 4
-VIEW_NAMES = ("ROLL", "FACE", "RING", "BARS", "HELP")
+V_ROLL, V_FACE, V_RING, V_BARS, V_FILES, V_HELP = 0, 1, 2, 3, 4, 5
+VIEW_NAMES = ("ROLL", "FACE", "RING", "BARS", "FILES", "HELP")
 
 # ------------------------------------------------------------------ musical
 TRACK_NAMES = ("LEAD", "BASS", "KEYS", "PERC")
@@ -89,9 +91,48 @@ NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
 # ------------------------------------------------------------------ keybed
 # The middle two keyboard rows are a piano: white keys on the home row, black
-# keys in the physical gaps above them.
+# keys in the physical gaps above them. Those two rows hold NOTHING but piano:
+# every function that used to squat between the keys (q r i ' [ ]) lives on
+# the ctrl layer now, so a missed black key can no longer wipe a track.
 WHITE_KEYS = "asdfghjkl;"
 WHITE_SEMI = (0, 2, 4, 5, 7, 9, 11, 12, 14, 16)
 BLACK_KEYS = {"w": 1, "e": 3, "t": 6, "y": 8, "u": 10, "o": 13, "p": 15}
 STEP_KEYS_A = "12345678"
 STEP_KEYS_B = "zxcvbnm,"
+
+# The ctrl key's own keycode in the ADV keyboard driver's pressed-key table;
+# MatrixKeyboard.is_key_pressed(KEY_CTRL) is True while it is physically held
+# (verified in uiflow-micropython 2.5.0 source). Mnemonic ctrl-layer bindings:
+# G generate, C clear, M mute, P pattern, [ ] tempo, F files.
+KEY_CTRL = 0x80
+
+# ------------------------------------------------------------------ presets
+# Four factory patterns, one per key on the black-key row's first four keys.
+# A preset lands in the CURRENT pattern slot, so ctrl+P then a preset key
+# stacks different grooves into different banks. Values are the same semitone
+# offsets (melodic) and drum indices (PERC) the generator writes.
+_N = None
+PRESET_KEYS = "wety"
+PRESETS = (
+    # (name, bpm, scale index, per-track octave, 4 tracks x 16 steps)
+    ("ACID", 128, 1, (0, -1, 0, 0), (
+        (_N, _N, 12, _N, _N, 15, _N, _N, _N, _N, 12, _N, 10, _N, _N, _N),
+        (0, _N, 0, 12, 0, _N, 3, _N, 0, _N, 0, 12, 5, _N, 3, _N),
+        (_N,) * 16,
+        (0, 2, 2, 2, 0, 2, 3, 2, 0, 2, 2, 2, 0, 7, 3, 2))),
+    ("DISCO", 118, 0, (0, -1, 0, 0), (
+        (_N, _N, _N, _N, _N, _N, _N, _N, _N, _N, 9, _N, 7, _N, 4, _N),
+        (0, _N, 12, _N, 0, _N, 12, _N, 5, _N, 17, _N, 7, _N, 19, _N),
+        (_N, _N, 4, _N, _N, _N, 4, _N, _N, _N, 5, _N, _N, _N, 7, _N),
+        (0, _N, 3, _N, 0, _N, 3, _N, 0, _N, 3, _N, 0, _N, 3, 7))),
+    ("DUB", 76, 1, (0, -1, 0, 0), (
+        (_N,) * 16,
+        (0, _N, _N, _N, _N, _N, _N, 10, _N, _N, _N, _N, 7, _N, _N, _N),
+        (_N, _N, _N, _N, 3, _N, _N, _N, _N, _N, _N, _N, 7, _N, _N, _N),
+        (0, _N, _N, _N, 1, _N, _N, 2, _N, _N, 0, _N, 1, _N, 4, _N))),
+    ("CHIP", 140, 0, (0, -1, 0, 0), (
+        (0, 4, 7, 12, 7, 4, 0, 4, 2, 5, 9, 14, 9, 5, 2, 5),
+        (0, _N, 0, _N, 0, _N, 0, _N, 2, _N, 2, _N, 2, _N, 2, _N),
+        (_N, _N, 12, _N, _N, _N, 11, _N, _N, _N, 14, _N, _N, _N, 12, _N),
+        (0, 2, 1, 2, 0, 2, 1, 2, 0, 2, 1, 2, 0, 2, 1, 7))),
+)

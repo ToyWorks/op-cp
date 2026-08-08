@@ -10,9 +10,10 @@
 #   z x c v b n m ,                 steps 9-16
 #
 #   SPACE play/stop     ENTER record arm (live, quantized to 16ths)
-#   q generate   r clear   i mute   ' pattern
-#   [ ] tempo    - = octave   ` scale   9 swing   0 volume
+#   ctrl+G generate   ctrl+C clear   ctrl+M mute   ctrl+P pattern
+#   ctrl+[ ] tempo    ctrl+F files   - = octave   ` scale   9 swing   0 volume
 #   . / previous / next track        \ next view (help is the last one)
+#   FILES view: 1-8 load a slot, s then 1-8 save, w e t y drop in a preset
 #
 # This file is only the lifecycle. Everything else lives in lib/, which the
 # Makefile installs next to main.py on the device:
@@ -51,6 +52,10 @@ def setup():
         pass
 
     A.begin()
+    Q.storage_init()                 # SD if a card is in, /flash otherwise
+    if S.link_on:
+        import opcp_link
+        opcp_link.begin()            # broadcast steps for the StackChan
 
     # Optional hardware: a plain Cardputer has no matrix keyboard, and the
     # program should still run and show its screen if this fails.

@@ -107,7 +107,9 @@ def draw_ring(full=False):
         elif i % 4 == 0:
             M5.Lcd.fillRect(x - 1, y - 1, 3, 3, C.FAINT)
         else:
-            M5.Lcd.fillRect(x, y, 1, 1, C.FAINT)
+            # 2px, not 1 — a single pixel vanishes on the panel, and the loop
+            # then reads as four beat marks floating in space, not as a ring
+            M5.Lcd.fillRect(x, y, 2, 2, C.FAINT)
 
     energy = max(S.hit)
     if energy:
@@ -121,9 +123,10 @@ def draw_bars(full=False):
     top, h = anim_zone()
     M5.Lcd.fillRect(0, top, U.W, h, C.BG)
     seg = U.W // C.TRACKS
-    bw = 10
+    bw = max(10, U.SW)           # same width as a roll column — one vocabulary
     base = top + h - U.TINY_H - 2
     maxh = base - top - 2
+    M5.Lcd.fillRect(U.ROLL_X, base, U.ROLL_W, 1, C.FAINT)
     M5.Lcd.setFont(U.TINY)
     for t in range(C.TRACKS):
         x = t * seg + (seg - bw) // 2
@@ -134,6 +137,44 @@ def draw_bars(full=False):
         M5.Lcd.setTextColor(c if t == S.track else C.DIM, C.BG)
         s = C.TRACK_NAMES[t]
         M5.Lcd.drawString(s, t * seg + (seg - M5.Lcd.textWidth(s)) // 2, base + 2)
+
+
+# --- FILES: eight save slots and the factory presets ----------------------
+def draw_files(full=False):
+    """Three direct-access columns: presets, slots 1-4, slots 5-8.
+
+    No cursor — every entry is labelled with the key that fires it, the same
+    contract as the step keys. While save is armed the preset column drops to
+    FAINT (presets are read-only targets) and every slot digit lights up.
+    """
+    top, h = anim_zone()
+    M5.Lcd.fillRect(0, top, U.W, h, C.BG)
+    M5.Lcd.setFont(U.TINY)
+    colw = (U.W - 2 * U.MARGIN) // 3
+    lh = (h - 4) // 4
+    y0 = top + 2
+
+    for n, p in enumerate(C.PRESETS):
+        y = y0 + n * lh
+        kc = C.FAINT if S.files_arm else C.FG
+        nc = C.FAINT if S.files_arm else C.DIM
+        M5.Lcd.setTextColor(kc, C.BG)
+        M5.Lcd.drawString(C.PRESET_KEYS[n], U.MARGIN, y)
+        M5.Lcd.setTextColor(nc, C.BG)
+        M5.Lcd.drawString(p[0], U.MARGIN + 12, y)
+
+    for i in range(C.SLOTS):
+        x = U.MARGIN + (1 + i // 4) * colw
+        y = y0 + (i % 4) * lh
+        m = S.slot_meta[i]
+        M5.Lcd.setTextColor(C.FG if (m or S.files_arm) else C.DIM, C.BG)
+        M5.Lcd.drawString(str(i + 1), x, y)
+        if m:
+            M5.Lcd.setTextColor(C.DIM, C.BG)
+            M5.Lcd.drawString("%d %s" % (m[0], C.SCALES[m[1]][0]), x + 12, y)
+        else:
+            M5.Lcd.setTextColor(C.FAINT, C.BG)
+            M5.Lcd.drawString("--", x + 12, y)
 
 
 def draw_cartoon(full=False):
@@ -181,6 +222,8 @@ def redraw_body():
     """
     if S.view == C.V_ROLL:
         U.draw_roll()
+    elif S.view == C.V_FILES:
+        draw_files(True)
     elif S.view != C.V_HELP:
         build_ring()
         draw_cartoon(True)
@@ -194,6 +237,8 @@ def redraw_all():
     U.draw_head()
     if S.view == C.V_ROLL:
         U.draw_roll()
+    elif S.view == C.V_FILES:
+        draw_files(True)
     else:
         build_ring()
         draw_cartoon(True)

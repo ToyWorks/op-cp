@@ -116,6 +116,16 @@ asyncio would not improve this and is deliberately not used:
 If you add something that genuinely blocks (a network fetch, an SD read), that
 is the moment to reconsider — not before.
 
+## The link
+
+`lib/opcp_link.py` broadcasts every step over ESP-NOW (channel 1, 9-byte
+packets: step, per-track hit bitmask, drum index, bpm) for the StackChan in
+`../stackchan-dance`, which prefers packets over its microphone and falls
+back automatically. The wire format lives in both files' headers — change
+one, change both. ctrl+N toggles; on by default (a broadcast nobody hears
+costs nothing). The radio comes up lazily, so `import espnow` failures
+degrade to link-off instead of dying at boot.
+
 ## The loop
 
 ```bash

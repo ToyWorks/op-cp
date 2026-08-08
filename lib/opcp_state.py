@@ -62,6 +62,18 @@ class Seq:
         self.kb = None
         self.kb_tick = None
 
+        # link: broadcast each step over ESP-NOW for the dancing StackChan.
+        # On by default — a broadcast nobody hears costs nothing; ctrl+N.
+        self.link_on = True
+
+        # persistence: storage_init() points save_dir at the SD card when one
+        # mounts, so patterns survive a firmware reflash. slot_meta caches
+        # (bpm, scale) per slot so the FILES view never reads files to draw —
+        # opcp_seq writes it, opcp_screen reads it, and no import cycle forms.
+        self.save_dir = "/flash"
+        self.slot_meta = [None] * C.SLOTS
+        self.files_arm = False        # FILES: next slot digit saves, not loads
+
     # -- convenience ---------------------------------------------------
     def steps(self):
         """The step list of the track currently being edited."""
