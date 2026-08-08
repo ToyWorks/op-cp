@@ -3,11 +3,15 @@
 **A pocket step sequencer for the M5Stack Cardputer-ADV** — four tracks, sixteen
 steps, a PCM synth, and a piano hiding in the keyboard. UIFlow2 MicroPython.
 
-![the roll, playing](docs/screens/roll-playing.png)
+![OP-CP running on a Cardputer-ADV](docs/photo/op-cp-on-the-cardputer.jpg)
+
+*The FACE view on PERC at 128 bpm. The middle two keyboard rows are the piano —
+you can see the black keys sitting in the physical gaps above the home row.*
 
 | | | |
 |:--:|:--:|:--:|
-| ![face](docs/screens/face-lead-hit.png) | ![ring](docs/screens/ring-perc-hit.png) | ![bars](docs/screens/bars-perc-hit.png) |
+| ![roll](docs/screens/roll-playing.png) | ![ring](docs/screens/ring-perc-hit.png) | ![bars](docs/screens/bars-perc-hit.png) |
+| the roll | RING | BARS |
 
 > ### Built with [`vibe-uiflow`](https://github.com/luckiday/vibe-hardware/tree/main/skills/vibe-uiflow)
 >
