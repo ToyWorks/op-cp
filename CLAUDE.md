@@ -90,9 +90,12 @@ then confirmed on the hardware.
   ×8 at the exit to land on the scale every threshold downstream was tuned
   against. Measured in this room: quiet 24–80, music 590 avg / 2500 peak,
   gate at 140.
-- **Buttons** on 0 (BOOT) / 39 / 40, active-low with internal pull-ups.
-  BOOT toggles the ear; **39 is the top one and steps the palette forward**,
-  40 steps back. Edge-detected, so one press is one step.
+- **Buttons**: only the two side ones, 39 and 40, active-low with internal
+  pull-ups, edge-detected so one press is one action. **39 is the top one and
+  walks the palette**; 40 toggles the ear (LISTEN / MIC ONLY). GPIO0 (BOOT)
+  is deliberately unused: on an ESP32-S3 it is the download-mode strapping
+  pin, so held low at reset the chip never starts the firmware at all — the
+  worst possible thing to bind a feature to and then invite someone to press.
 - **No body**: no servos, no LEDs. `on_beat`/`tick`/`rest` are empty and the
   dance is entirely on the panel.
 - Speaker (I2S out, bclk 15 / ws 16 / dout 7) exists but is unused — and
