@@ -85,6 +85,12 @@ plays; SCD listens with its own microphone, finds the beat, and dances to it.
 ground truth instead of from the room, and falls back to the microphone the
 moment it goes quiet. Neither needs the other to be useful.
 
+![the desk](dance/docs/photo/the-desk.jpg)
+
+*The whole desk. OP-CP in the middle; below it the cube in **LINK**, dancing
+from OP-CP's ESP-NOW packets at 128 bpm on a green palette; above, the StackChan
+held in **STILL** — head settled, face carrying on.*
+
 | | |
 |:--:|:--:|
 | ![cube](dance/docs/screens/cube-beat-burst.png) | ![cores3](dance/docs/screens/cores3-beat-burst.png) |
