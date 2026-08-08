@@ -14,6 +14,9 @@ exactly one of them to the device **under the same name**. So no file in this
 project ever asks which board it is running on — the answer was decided by
 the Makefile before anything was uploaded.
 
+Both boards enumerate on the same port name, so keep one attached at a time;
+`make boards` matches on the USB product string, not the port.
+
 ```bash
 make boards               # what is attached, and the BOARD= name for each
 make check                # BOARD=cores3 is the default
