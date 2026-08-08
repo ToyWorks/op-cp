@@ -9,6 +9,7 @@ worth reviewing gets one file, plus a contact sheet with all of them.
 Usage: python3 sim/shoot.py [scale]
 """
 
+import glob
 import os
 import sys
 
@@ -128,6 +129,9 @@ snap("help")
 # between frames, then compare against the same final state drawn onto a
 # clean band: any difference IS a ghost.
 GHOSTS = 0
+
+for _stale in glob.glob(os.path.join(OUT, "_ghosts-*.png")):
+    os.remove(_stale)          # a leftover from a previous failing run misleads
 
 
 def _ghost_check(view, name):
