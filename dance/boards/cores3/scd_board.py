@@ -95,33 +95,81 @@ def mic_poll():
 
 
 # --------------------------------------------------------------------- input
-def poll_input(now):
-    """(toggle_link, palette_step) — the shape both boards answer in.
+def _screen_touched():
+    """Is a finger on the panel right now?
 
-    A pat on the head (the base touchpad, or a tap on the lower screen)
-    toggles the ear. This board has no spare control for the palette, so
-    the second field is always 0 here."""
-    if time.ticks_diff(now, S.next_touch) < 0:
-        return (False, 0)
-    S.next_touch = time.ticks_add(now, C.TOUCH_POLL_MS)
-    t = False
+    M5.update() refreshes the touch controller every loop, so this is a cached
+    read, not an I2C transaction — which is why the screen can be polled every
+    frame while the base strip below cannot. Guarded because M5.Touch is not on
+    every board this firmware family runs on."""
+    try:
+        return M5.Touch.getCount() > 0
+    except Exception:
+        try:
+            return bool(M5.BtnA.isPressed() or M5.BtnB.isPressed()
+                        or M5.BtnC.isPressed())
+        except Exception:
+            return False
+
+
+def _strip_touched():
+    """Any of the base's three touch zones. A real I2C read — rate-limited."""
     try:
         ch = MO.chan()
-        if ch is not None:
-            tp = ch.get_touch()
-            t = bool(tp[0] or tp[1] or tp[2])
+        if ch is None:
+            return False
+        tp = ch.get_touch()
+        return bool(tp[0] or tp[1] or tp[2])
     except Exception:
-        pass
-    if not t:
-        try:
-            t = M5.BtnA.wasClicked() or M5.BtnB.wasClicked() \
-                or M5.BtnC.wasClicked()
-        except Exception:
-            pass
-    if t and now > S.touch_hold:
-        S.touch_hold = now + C.TOUCH_DEBOUNCE_MS
-        return (True, 0)
-    return (False, 0)
+        return False
+
+
+def poll_input(now):
+    """(toggle_link, palette_step, toggle_still) — the shape both boards
+    answer in.
+
+    Two surfaces, two gestures:
+
+      screen tap            -> next colour
+      base strip, tapped    -> toggle the ear (LISTEN / MIC ONLY)
+      base strip, HELD      -> be still: the body stops marking the beat
+
+    A hold fires the moment it crosses HOLD_MS rather than on release, so it
+    lands under your finger instead of after it; the release is then swallowed
+    so one gesture is never also read as a tap."""
+    step = 0
+    toggle = False
+    still = False
+
+    # -- the screen: cached, so poll it every frame and time the contact
+    down = _screen_touched()
+    if down and not S.screen_down:
+        S.screen_down = now or 1
+    elif not down and S.screen_down:
+        if time.ticks_diff(now, S.screen_down) <= C.TAP_MAX_MS \
+                and now > S.touch_hold:
+            S.touch_hold = now + C.TOUCH_DEBOUNCE_MS
+            step = 1
+        S.screen_down = 0
+
+    # -- the base strip: an I2C read, so keep it to TOUCH_POLL_MS
+    if time.ticks_diff(now, S.next_touch) >= 0:
+        S.next_touch = time.ticks_add(now, C.TOUCH_POLL_MS)
+        held = _strip_touched()
+        if held and not S.strip_down:
+            S.strip_down = now or 1
+            S.strip_fired = False
+        elif held and S.strip_down and not S.strip_fired:
+            if time.ticks_diff(now, S.strip_down) >= C.HOLD_MS:
+                S.strip_fired = True          # fire under the finger, not after
+                still = True
+        elif not held and S.strip_down:
+            if not S.strip_fired and now > S.touch_hold:
+                S.touch_hold = now + C.TOUCH_DEBOUNCE_MS
+                toggle = True                 # a tap, not a hold
+            S.strip_down = 0
+
+    return (toggle, step, still)
 
 
 # ---------------------------------------------------------------------- body

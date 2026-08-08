@@ -135,8 +135,10 @@ def on_beat(now, intensity):
     quietly, because the servo whine reads on the microphone at ~20x the
     room floor and was corrupting the very beat we dance to. Between its
     turns it glides home, one write, also masked."""
-    wake()
     S.led_flash = 2
+    if S.still:
+        return          # held strip: the face dances on, the head does not
+    wake()
 
     if not S.servo_awake:
         return
@@ -153,6 +155,8 @@ def on_beat(now, intensity):
 def tick(now):
     """In silence: breathe and glance."""
 
+    if S.still:
+        return
     if not S.grooving and S.servo_awake:
         ph = (now - S.breath0) % C.BREATH_MS
         breath = 2.0 if ph > C.BREATH_MS // 2 else 0.0

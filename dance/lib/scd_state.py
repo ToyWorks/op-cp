@@ -66,6 +66,14 @@ class Dance:
         self.touch_prev = False
         self.touch_hold = 0       # debounce deadline
         self.next_btn = 0         # cube button poll deadline
+        self.screen_down = 0      # when the screen contact started, 0 = up
+        self.strip_down = 0       # ...and the base strip's
+        self.strip_fired = False  # its hold already fired; ignore the release
+
+        # A held strip means "be still": the body stops marking the beat and
+        # settles, while the face keeps dancing. It is the servos that are
+        # loud and distracting, not the screen.
+        self.still = False
 
         # plumbing ------------------------------------------------------
         self.next_led = 0

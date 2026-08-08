@@ -261,6 +261,71 @@ check(S.palette == start, "and it steps back")
 if BOARD.HAS_BODY:
     import scd_motion as MO
 
+    banner("gestures")
+    # Drive the tap/hold state machine directly, with the two touch surfaces
+    # faked, so the logic is proven without anyone having to touch anything.
+    _scr = [False]
+    _str = [False]
+    BOARD._screen_touched = lambda: _scr[0]
+    BOARD._strip_touched = lambda: _str[0]
+
+    def _gest(seq):
+        """Replay (screen, strip, dt_ms) and collect what came back."""
+        S.screen_down = S.strip_down = 0
+        S.strip_fired = False
+        S.next_touch = 0
+        S.touch_hold = 0
+        out = [False, 0, False]
+        t = 100000
+        for scr, stp, dt in seq:
+            _scr[0], _str[0] = scr, stp
+            t += dt
+            S.next_touch = 0                  # let the strip read every step
+            a, b, c = BOARD.poll_input(t)
+            out[0] |= a
+            out[1] += b
+            out[2] |= c
+        return tuple(out)
+
+    tap = _gest([(True, False, 0), (True, False, 100), (False, False, 100)])
+    print("  screen tap     -> %s" % (tap,))
+    check(tap[1] == 1 and not tap[0] and not tap[2],
+          "a screen tap steps the palette and nothing else")
+
+    slow = _gest([(True, False, 0), (True, False, C.TAP_MAX_MS + 200),
+                  (False, False, 100)])
+    print("  screen held    -> %s" % (slow,))
+    check(slow[1] == 0, "a long screen press is not a tap")
+
+    stap = _gest([(False, True, 0), (False, True, 100), (False, False, 100)])
+    print("  strip tap      -> %s" % (stap,))
+    check(stap[0] and not stap[2] and stap[1] == 0,
+          "a strip tap toggles the ear, and does not still")
+
+    hold = _gest([(False, True, 0), (False, True, C.HOLD_MS + 100),
+                  (False, True, 100), (False, False, 100)])
+    print("  strip held     -> %s" % (hold,))
+    check(hold[2], "a held strip asks to be still")
+    check(not hold[0], "and its release is not also read as a tap")
+
+    _held_once = _gest([(False, True, 0), (False, True, C.HOLD_MS + 100),
+                        (False, True, 200), (False, True, 200),
+                        (False, False, 100)])
+    check(_held_once[2], "a hold still fires when kept down")
+
+    banner("still")
+    S.still = False
+    S.grooving = True
+    S.servo_awake = True
+    _yaw = S.yaw
+    S.still = True
+    MO.on_beat(time.ticks_ms(), 3)
+    check(S.yaw == _yaw, "a beat moves no servo while still")
+    MO.tick(time.ticks_ms())
+    check(S.yaw == _yaw, "and neither does the idle tick")
+    S.still = False
+    S.grooving = False
+
     banner("stackchan base")
     if MO.chan() is not None:
         print("  servo power   %s, torque %s" % (S.servo_ok, S.servo_awake))

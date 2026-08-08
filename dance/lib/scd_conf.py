@@ -100,5 +100,9 @@ LED_TICK_MS = 66
 # audio analysis is needed while packets flow. Both sides pin channel 1.
 LINK_CHANNEL = 1
 LINK_FRESH_MS = 1500     # packets younger than this own the dance
-TOUCH_POLL_MS = 150      # base touchpad is an I2C read — don't hammer it
+TOUCH_POLL_MS = 150      # base touchpad is an I2C read — don't hammer it.
+                         # The SCREEN is not: M5.update() refreshes it every
+                         # loop, so M5.Touch reads are cached and free.
 TOUCH_DEBOUNCE_MS = 700  # one head-pat, one toggle
+TAP_MAX_MS = 500         # a screen contact shorter than this is a tap
+HOLD_MS = 800            # ...and a strip contact longer than this is a hold

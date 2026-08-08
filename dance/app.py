@@ -72,11 +72,15 @@ def loop():
     M5.update()
     now = time.ticks_ms()
 
-    toggle, step = BOARD.poll_input(now)
+    toggle, step, still = BOARD.poll_input(now)
     if toggle:
         S.link_enabled = not S.link_enabled
     if step:
         _palette(step, now)
+    if still:
+        S.still = not S.still
+        if S.still:
+            BOARD.rest()      # settle where it is and drop torque — quiet
 
     # packets first; the microphone only works when the radio is silent
     intensity = L.poll(now)
@@ -109,8 +113,9 @@ def loop():
 
     if time.ticks_diff(now, S.next_anim) >= 0:
         S.next_anim = time.ticks_add(now, C.ANIM_MS)
-        S.mode_word = ("LINK" if linked else "DANCE") if S.grooving else \
-            ("LISTEN" if S.link_enabled else "MIC ONLY")
+        S.mode_word = "STILL" if S.still else \
+            (("LINK" if linked else "DANCE") if S.grooving else
+             ("LISTEN" if S.link_enabled else "MIC ONLY"))
         F.draw(now)
         # Decay AFTER drawing. Decaying first meant the peak of every hit was
         # computed and then thrown away unseen: the largest S.hit ever rendered

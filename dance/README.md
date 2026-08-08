@@ -8,6 +8,14 @@ rhythmic works; the OP-CP kit just happens to live on the same desk. When OP-CP'
 ESP-NOW step packets *are* arriving it dances from ground truth instead, and
 hands the dance back to the microphone the moment the radio goes quiet.
 
+![the desk](docs/photo/the-desk.jpg)
+
+*All three, live. The Cardputer-ADV in the middle is OP-CP — here on its help
+page. Below it the cube is in **LINK**, dancing from OP-CP's ESP-NOW packets at
+128 bpm with the palette walked round to green. Above, the StackChan has been
+put in **STILL** by holding its touch strip: the head has stopped marking the
+beat and settled, and the face carries on.*
+
 | | |
 |:--:|:--:|
 | ![cube idle](docs/screens/cube-idle.png) | ![cube beat](docs/screens/cube-beat-burst.png) |
@@ -41,6 +49,25 @@ and the accent is still the only saturated colour on screen, because each entry
 is one hue at two brightnesses rather than a second colour appearing:
 
 ![palette](docs/screens/cube-palette-amber.png)
+
+## Controls
+
+| | CoreS3 + StackChan base | cube |
+|---|---|---|
+| next colour | tap the **screen** | top side button (GPIO39) |
+| LISTEN / MIC ONLY | tap the **touch strip** | the button below it (GPIO40) |
+| **STILL** — stop the body | **hold** the touch strip, 0.8 s | — (no body to still) |
+
+A hold fires the moment it crosses the threshold rather than on release, so the
+feedback lands while your finger is still down; the release is then swallowed so
+one gesture is never also counted as a tap.
+
+**STILL** stops the head and rests it — settled and unpowered, which is the
+quiet part — while the face dances on. It is the servos that are distracting,
+not the screen. The corner reads `STILL` until you hold again.
+
+GPIO0 (BOOT) is deliberately unbound on the cube: it is the download-mode
+strapping pin, so a feature there would hand you a black screen.
 
 ## Run it
 
