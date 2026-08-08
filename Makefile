@@ -71,12 +71,17 @@ run:
 
 ## deploy: install as main.py so the dance starts on power-up, then reboot
 .PHONY: deploy
-deploy: compile
+deploy: compile bootopt
 	@echo "==> installing $(APP) as main.py on $(BOARD) at $(PORT)"
 	@$(DEV) fs cp $(APP) :main.py
 	@for f in $(LIBS) $(ART); do $(DEV) fs cp "$$f" ":$$(basename $$f)"; done
 	@$(DEV) reset
 	@echo "==> deployed; board is rebooting into $(APP)"
+
+## bootopt: NVS uiflow/boot_option = 0, so boot.py runs main.py on power-up
+.PHONY: bootopt
+bootopt:
+	@$(DEV) run tools/bootopt.py
 
 ## undeploy: remove main.py, boot back to the UIFlow2 menu
 .PHONY: undeploy

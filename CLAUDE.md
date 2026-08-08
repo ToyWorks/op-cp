@@ -63,7 +63,7 @@ then confirmed on the hardware.
 
 - **Firmware is UIFlow2 v2.5.0 for the M5Stack StampS3** — flashed at 0x0 the
   headless way (`uiflow2-headless-flashing`), file
-  `e4436acc87fec305fe85a04394bdf300.bin`, then NVS `uiflow/boot_option = 0`.
+  `e4436acc87fec305fe85a04394bdf300.bin`, then `make bootopt`.
   StampS3 because it is the only UIFlow2 build that is a *bare* ESP32-S3:
   no panel, no PMIC, no codec for `M5.begin()` to hunt for and hang on. The
   stock xiaozhi firmware was dumped to `exp/_backup/` first and can be put
@@ -98,6 +98,23 @@ then confirmed on the hardware.
 - Speaker (I2S out, bclk 15 / ws 16 / dout 7) exists but is unused — and
   **cannot** be used to test the mic, because M5Unified's Speaker and Mic are
   mutually exclusive. Test with sound from the host instead.
+
+## boot_option is a u8, and getting that wrong is silent
+
+UIFlow2's `boot.py` reads `uiflow/boot_option` with **`get_u8`**, and
+`esp32.NVS` types its keys. Write it with `set_i32` and `get_i32` reads 0
+back perfectly happily — while `boot.py`'s `get_u8` raises NOT_FOUND, falls
+back to 1, and spends 60 s on a network connect instead of starting the app.
+Nothing reports an error anywhere. And an ST7789 holds its last image without
+being refreshed, so the symptom is not a blank screen but the **previous
+frame, frozen** — which reads as a hung app rather than one that never ran.
+`tools/bootopt.py` (erase the key, then `set_u8`) is wired into `make deploy`
+so this cannot be got wrong by hand again.
+
+Related: `boot.py` also names a per-board startup override (hold Cardputer-ADV's
+ESC, StickS3's BtnA, or touch the StackChan screen during a 100 ms window) to
+get back to the menu without deleting main.py. **The StampS3 build has no such
+override**, so on the cube the way back is `make undeploy`.
 
 ## The face, on two panels
 
