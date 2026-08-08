@@ -1,0 +1,7 @@
+# the parent repo's ignores do not reach a subdirectory — keep our own
+.venv/
+*.mpy
+__pycache__/
+
+# regenerate with `make shots`
+sim/shots/
