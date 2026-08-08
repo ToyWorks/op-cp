@@ -9,6 +9,20 @@ steps, a PCM synth, and a piano hiding in the keyboard. UIFlow2 MicroPython.
 |:--:|:--:|:--:|
 | ![face](docs/screens/face-lead-hit.png) | ![ring](docs/screens/ring-perc-hit.png) | ![bars](docs/screens/bars-perc-hit.png) |
 
+> ### Built with [`vibe-uiflow`](https://github.com/luckiday/vibe-hardware/tree/main/skills/vibe-uiflow)
+>
+> This repo is the worked example for **vibe-uiflow**, a skill for building
+> screen-and-buttons devices on UIFlow2/MicroPython with an AI coding agent
+> driving the loop. The skill is the *method* — two loops, the ghost check, the
+> rules, and the platform facts that cost a debugging session each. This is the
+> method actually running on hardware, and every measurement quoted in the skill
+> came off this board.
+>
+> It sits beside [`vibe-firmware`](https://github.com/luckiday/vibe-hardware/tree/main/skills/vibe-firmware)
+> (C/ESP-IDF) in [**vibe-hardware**](https://github.com/luckiday/vibe-hardware) —
+> a set of skills for taking small hardware from a brief to a built thing, across
+> firmware, PCB and enclosure.
+
 ## Build and run
 
 Requires an M5Stack Cardputer-ADV with UIFlow2 firmware (M5Burner installs it;
@@ -59,6 +73,28 @@ Step clock, measured under real playback: median 1 ms late, p90 2 ms, max 3 ms
 against a 133 ms sixteenth. Heap floor over ~1350 frames of playback with the PCM
 kit resident: ~36 KB, no `MemoryError`.
 
+## Companion: SCD, the dancer
+
+[`dance/`](dance/) is **StackChan Dance** — the other half of the desk. OP-CP
+plays; SCD listens with its own microphone, finds the beat, and dances to it.
+`^N` broadcasts every step over ESP-NOW, so when the radio is up SCD dances from
+ground truth instead of from the room, and falls back to the microphone the
+moment it goes quiet. Neither needs the other to be useful.
+
+| | |
+|:--:|:--:|
+| ![cube](dance/docs/screens/cube-beat-burst.png) | ![cores3](dance/docs/screens/cores3-beat-burst.png) |
+| a 240×240 cube — it claps | a CoreS3 on a StackChan base — a hand on a drum pad, plus two servos and twelve LEDs |
+
+It is one program running on two very different machines, with **nothing at
+runtime asking which one it is on**: the difference lives in
+`boards/<board>/scd_board.py` and `make BOARD=…` copies exactly one of them to
+the device under the same name. One of those boards is not an M5Stack product at
+all — see [dance/README.md](dance/README.md) for how UIFlow2 gets onto it.
+
+It shares this repo's toolchain: `make venv` here, then `make check BOARD=…`
+in `dance/`.
+
 ## Documentation
 
 | | |
@@ -68,6 +104,7 @@ kit resident: ~36 KB, no `MemoryError`.
 | [development.md](docs/development.md) | the two loops, the ghost check, frame costs, `make` targets |
 | [architecture.md](docs/architecture.md) | module layering, redraw discipline, timing |
 | [uiflow2-notes.md](docs/uiflow2-notes.md) | measured firmware and platform facts |
+| [dance/README.md](dance/README.md) | the companion module, and UIFlow2 on a non-M5 board |
 
 [CLAUDE.md](CLAUDE.md) is the short rulebook an AI coding agent reads before
 touching this repo. The one rule worth repeating here: **confirm an M5 API exists
