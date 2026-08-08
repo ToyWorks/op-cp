@@ -151,3 +151,7 @@ fires it; there is no cursor.
 **Link** (`^N`, on by default) broadcasts each step over ESP-NOW — 9 bytes:
 step, per-track hit bitmask, drum index, bpm — for a companion device to dance
 to. It is connectionless and costs nothing when nobody is listening.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
