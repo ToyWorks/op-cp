@@ -1,9 +1,10 @@
 # StackChan Dance — UIFlow2/MicroPython workflow for two boards.
 #
-# Same loop as OP-CP one directory up: `make check` proves a change on real
-# hardware, `make shots` renders the face on the host. The toolchain venv is
-# shared with it — both are plain mpremote + mpy-cross. Run `make venv` there
-# first if ../.venv does not exist yet.
+# Same loop as OP-CP: `make check` proves a change on real hardware,
+# `make shots` renders the face on the host. The toolchain venv is shared with
+# it — both are plain mpremote + mpy-cross — and this project is developed in
+# one directory layout and published in another, so look in both rather than
+# hardcoding either. Run OP-CP's `make venv` first if neither exists.
 #
 # BOARD is the only knob. The shared program is app.py + lib/; the board's own
 # half is boards/$(BOARD)/, which lands on the device under the SAME names, so
@@ -17,7 +18,7 @@
 BOARD ?= cores3
 BOARD_DIR := boards/$(BOARD)
 
-VENV     := ../.venv
+VENV     ?= $(firstword $(wildcard ../.venv ../cardputer-adv-uiflow2/.venv) ../.venv)
 BIN      := $(VENV)/bin
 PY       := $(BIN)/python3
 MPREMOTE := $(BIN)/mpremote

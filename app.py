@@ -109,13 +109,18 @@ def loop():
 
     if time.ticks_diff(now, S.next_anim) >= 0:
         S.next_anim = time.ticks_add(now, C.ANIM_MS)
+        S.mode_word = ("LINK" if linked else "DANCE") if S.grooving else \
+            ("LISTEN" if S.link_enabled else "MIC ONLY")
+        F.draw(now)
+        # Decay AFTER drawing. Decaying first meant the peak of every hit was
+        # computed and then thrown away unseen: the largest S.hit ever rendered
+        # was HIT_MAX - 1, so the clapping hands stopped 16 px short of each
+        # other and never once touched on the device — while the simulator,
+        # which sets S.hit directly, showed them meeting.
         if S.hit:
             S.hit -= 1        # one step per frame: a ~200 ms pop, every time
         if linked and S.level:
             S.level -= (S.level >> 3) + 1   # packet mode decays its own level
-        S.mode_word = ("LINK" if linked else "DANCE") if S.grooving else \
-            ("LISTEN" if S.link_enabled else "MIC ONLY")
-        F.draw(now)
 
     time.sleep_ms(2)
 

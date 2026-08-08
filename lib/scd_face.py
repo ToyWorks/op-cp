@@ -54,7 +54,12 @@ _SQUARE = {
     "m_lvl": 5, "m_hitw": 1, "m_hnum": 6, "m_hith": 1,
     "clap": True, "info_top": True,
     # the clap: hands `travel` px in from `rest` as the hit decays to nothing
+    # the clap: hands travel `clap_travel` px in from `clap_rest`, and STAY
+    # shut for `clap_hold` extra frames before springing open — one frame of
+    # contact is 33 ms out of a 469 ms beat, which reads as a flicker rather
+    # than as a clap
     "clap_y": 140, "clap_w": 60, "clap_rest": 22, "clap_travel": 36,
+    "clap_hold": 2,
     "pad_x": 12, "pad_w": 216, "pad_h": 12, "pad_dy": 32,
 }
 
@@ -223,7 +228,10 @@ def draw_clap(burst):
     opens over the same ~200 ms the face's pop takes — one motion, read two
     ways. The strike itself is the only accent up here: a flash between the
     palms, and sparks when the hit was a strong one."""
-    reach = S.hit * G["clap_travel"] // C.HIT_MAX
+    # hold shut at the top of the hit, then open linearly over what is left
+    open_over = C.HIT_MAX - G["clap_hold"]
+    reach = G["clap_travel"] if S.hit >= open_over else \
+        S.hit * G["clap_travel"] // open_over
     # 3 px buckets: the hands must not repaint for sub-pixel jitter
     reach = (reach // 3) * 3
     if not _changed("clap", (reach, burst)):
