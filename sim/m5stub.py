@@ -249,8 +249,8 @@ class _Speaker:
 
 
 class _M5:
-    def __init__(self):
-        w, h = _METRICS["screen"]
+    def __init__(self, size=None):
+        w, h = size or _METRICS["screen"]
         self.Lcd = _Lcd(w, h)
         self.Display = self.Lcd
         self.Speaker = _Speaker()
@@ -293,8 +293,16 @@ class MatrixKeyboard:
         pass
 
 
-def install():
+BOARDS = {"cores3": (320, 240), "cube": (240, 240)}
+
+
+def install(board="cores3"):
     """Put the fakes into sys.modules, then hand back the M5 instance.
+
+    `board` picks the panel size, because the two machines differ in shape
+    and the face lays itself out from what the board reports. A stand-in
+    scd_board carries just enough of that module's surface for the drawing
+    code — the real ones are hardware and cannot run here.
 
     Also grafts MicroPython's ticks_* onto the host `time` module, since the
     app's transport is written against them.
@@ -303,12 +311,27 @@ def install():
     import time as _time
     import types
 
-    m5 = _M5()
+    m5 = _M5(BOARDS[board])
     sys.modules["M5"] = m5
 
     hw = types.ModuleType("hardware")
     hw.MatrixKeyboard = MatrixKeyboard
     sys.modules["hardware"] = hw
+
+    b = types.ModuleType("scd_board")
+    b.NAME = board
+    b.HAS_BODY = board == "cores3"
+    b.MIN_RMS = 90 if board == "cores3" else 140
+    b.lcd = m5.Lcd
+    b.W, b.H = m5.Lcd.width(), m5.Lcd.height()
+    b.begin = lambda: None
+    b.mic_poll = lambda: None
+    b.poll_input = lambda now: (False, 0)
+    b.on_beat = lambda now, intensity: None
+    b.tick = lambda now: None
+    b.rest = lambda: None
+    b.resting_due = lambda now: False
+    sys.modules["scd_board"] = b
 
     if not hasattr(_time, "ticks_ms"):
         _time.ticks_ms = lambda: int(_time.monotonic() * 1000)

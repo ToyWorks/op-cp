@@ -8,7 +8,20 @@ class Dance:
     def __init__(self):
         self.mode_word = "LISTEN"  # what the corner of the screen says
 
+        # palette ------------------------------------------------------
+        # The accent is the music; the cube's top button walks this index.
+        # Everything that draws in the accent reads S.accent, never C.ACCENT,
+        # so one assignment repaints the whole program's idea of "the music".
+        self.palette = 0
+        self.accent = C.PALETTE[0][1]
+        self.accent_deep = C.PALETTE[0][2]
+        self.palette_name = C.PALETTE[0][0]
+        self.palette_shown = 0     # ms deadline for the colour's name
+
         # music ---------------------------------------------------------
+        # the noise gate lives here, not in scd_conf, so scd_beat stays pure
+        # integer logic with no hardware import; each board sets it at boot
+        self.min_rms = C.MIN_RMS
         self.level = 0            # 0..LEVEL_MAX, smoothed loudness vs floor
         self.beat_n = 0           # beats seen since boot
         self.bpm = 0              # 0 = no stable tempo yet
@@ -52,6 +65,7 @@ class Dance:
         self.next_touch = 0
         self.touch_prev = False
         self.touch_hold = 0       # debounce deadline
+        self.next_btn = 0         # cube button poll deadline
 
         # plumbing ------------------------------------------------------
         self.next_led = 0

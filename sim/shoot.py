@@ -1,12 +1,14 @@
 """Render the dance face's states to PNGs so the design can be looked at.
 
-    make shots        # then open sim/shots/
+    make shots                 # the CoreS3's 320x240
+    make shots BOARD=cube      # the cube's 240x240
+                               # then open sim/shots/
 
 Runs the real scd_face draw functions against the Pillow-backed M5 stub with
-CoreS3-measured font metrics. Geometry and colour quantisation are exact;
+device-measured font metrics. Geometry and colour quantisation are exact;
 motion, panel gamma and the servos are hardware questions.
 
-Usage: python3 sim/shoot.py [scale]
+Usage: python3 sim/shoot.py [board] [scale]
 """
 
 import os
@@ -19,7 +21,9 @@ sys.path.insert(0, os.path.join(_root, "lib"))
 
 import m5stub                                        # noqa: E402
 
-m5 = m5stub.install()
+BOARD = sys.argv[1] if len(sys.argv) > 1 else "cores3"
+SCALE = int(sys.argv[2]) if len(sys.argv) > 2 else 2
+m5 = m5stub.install(BOARD)
 
 from PIL import Image                                # noqa: E402
 
@@ -27,8 +31,7 @@ import scd_conf as C                                 # noqa: E402
 import scd_face as F                                 # noqa: E402
 from scd_state import S                              # noqa: E402
 
-SCALE = int(sys.argv[1]) if len(sys.argv) > 1 else 2
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shots")
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shots", BOARD)
 os.makedirs(OUT, exist_ok=True)
 
 import M5                                            # noqa: E402
@@ -49,7 +52,11 @@ def snap(name):
     print("  %-14s %dx%d -> %s" % (name, img.width, img.height, path))
 
 
-def state(groove, level, hit, gaze=0, blink=False, bpm=0, dx=0, inten=2):
+def state(groove, level, hit, gaze=0, blink=False, bpm=0, dx=0, inten=2,
+          palette=0, naming=False):
+    S.palette = palette
+    S.palette_name, S.accent, S.accent_deep = C.PALETTE[palette]
+    S.palette_shown = 1 << 60 if naming else 0
     S.grooving = groove
     S.level = level
     S.hit = hit
@@ -65,7 +72,7 @@ def state(groove, level, hit, gaze=0, blink=False, bpm=0, dx=0, inten=2):
     F.draw(0)
 
 
-print("rendering %dx%d at %dx" % (F.W, F.H, SCALE))
+print("rendering %s %dx%d at %dx" % (BOARD, F.W, F.H, SCALE))
 
 state(False, 0, 0)
 snap("idle")
@@ -87,6 +94,12 @@ snap("beat-tap")
 
 state(True, 255, C.HIT_MAX, bpm=128, dx=14, inten=3)
 snap("beat-burst")
+
+# the palette, which the cube's top button walks through
+for i in (1, 3, 4):
+    state(True, 230, C.HIT_MAX, bpm=128, dx=-14, inten=3, palette=i,
+          naming=True)
+    snap("palette-%s" % C.PALETTE[i][0].lower())
 
 # contact sheet
 COLS = 3

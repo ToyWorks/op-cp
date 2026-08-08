@@ -12,18 +12,33 @@ FG = 0xF0F0F0            # the face itself — classic white-on-black stackchan
 INK = 0x000000
 DIM = 0x707070
 FAINT = 0x303030
-ACCENT = 0x20C8F8        # the music. Nothing else may use it.
-ACCENT_DEEP = 0x082830   # the drum pad at rest — the accent, unlit
 LED_OFF = 0x000000
 LED_BEAT = 0xF0F0F0      # beat flash on the strips, one frame of white
+
+# The accent is the music, and it is the ONE saturated colour on screen —
+# that rule is what makes a flash legible at a glance, so cycling the accent
+# must never turn into a second colour appearing. Each entry is therefore an
+# (name, lit, unlit) triple: one hue, two brightnesses. The cube's top button
+# steps through them; index 0 is the cyan the CoreS3 was designed around.
+PALETTE = (
+    ("CYAN",   0x20C8F8, 0x082830),
+    ("AMBER",  0xF8A020, 0x302008),
+    ("LIME",   0x60E020, 0x142808),
+    ("MAGENTA", 0xF040C0, 0x300828),
+    ("VIOLET", 0x8060F8, 0x181030),
+    ("RED",    0xF83820, 0x300808),
+)
+ACCENT = PALETTE[0][1]       # the sim and selftest's fallback; the running
+ACCENT_DEEP = PALETTE[0][2]  # program reads S.accent, which the button moves
+PALETTE_NAME_MS = 1200       # how long the colour's name sits in the corner
 
 # ------------------------------------------------------------------ mic / beat
 RATE = 8000              # mic sample rate; FRAME/RATE = one 32 ms energy frame
 FRAME = 256              # samples per capture
 RMS_STRIDE = 4           # every 4th sample is plenty for an energy envelope
-MIN_RMS = 90             # gate: below this the room is just being a room.
-                         # Tuned on hardware: ambient idles ~40-60, the
-                         # Cardputer at arm's length peaks in the hundreds.
+MIN_RMS = 90             # the default noise gate. Each board overrides it
+                         # into S.min_rms at begin(), because the number is a
+                         # property of that microphone, not of the music.
 REFRACT_MS = 130         # two beats can't be closer than this (≈460 bpm)
 IBI_MIN = 240            # inter-beat intervals outside this window are noise,
 IBI_MAX = 1500           # not tempo (40..250 bpm)

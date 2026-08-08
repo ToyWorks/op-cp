@@ -127,18 +127,16 @@ def move(dyaw, dpitch, t_ms, now):
 
 
 def on_beat(now, intensity):
-    """One beat: the FACE does the dancing (see scd_face); the head only
-    marks the bars. Every SERVO_EVERY-th beat it sways once — quietly,
-    because the servo whine reads on the microphone at ~20x the room floor
-    and was corrupting the very beat we dance to. Between its turns it
-    glides home, one write, also masked."""
-    wake()
-    S.hit = C.HIT_MAX
-    S.hit_intensity = intensity
-    S.led_flash = 2
+    """One beat, as the BODY sees it. The pop, the swing and the side flip
+    belong to the face and happen in app._beat, on both machines; what is
+    left here is the head and the strips.
 
-    if S.rand() % 8 != 0:              # 1-in-8: hit the same side again
-        S.side = -S.side
+    The head only marks the bars: every SERVO_EVERY-th beat it sways once —
+    quietly, because the servo whine reads on the microphone at ~20x the
+    room floor and was corrupting the very beat we dance to. Between its
+    turns it glides home, one write, also masked."""
+    wake()
+    S.led_flash = 2
 
     if not S.servo_awake:
         return
@@ -180,8 +178,8 @@ def leds(now):
         S.led_flash -= 1
         lit, color = 6, C.LED_BEAT
     else:
-        lit, color = S.level * 7 // (C.LEVEL_MAX + 1), C.ACCENT
-    key = lit if color == C.ACCENT else 100 + lit
+        lit, color = S.level * 7 // (C.LEVEL_MAX + 1), S.accent
+    key = lit if color == S.accent else 100 + lit
     if key == S.led_lit:
         return
     S.led_lit = key

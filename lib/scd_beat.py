@@ -66,7 +66,7 @@ class Beat:
         # and never while our own servos are whining into the microphone
         beat = 0
         local = self.local if self.local else 1
-        if (rms > C.MIN_RMS and rms > self.floor * 2
+        if (rms > S.min_rms and rms > self.floor * 2
                 and rms * 2 > local * 3
                 and now - self.last > C.REFRACT_MS
                 and now >= S.servo_mask_until):
