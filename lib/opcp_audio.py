@@ -224,7 +224,7 @@ def cycle_volume():
         M5.Speaker.setVolume(C.VOLS[S.vol_i])
     except Exception:
         pass
-    S.set_hero("VOL", S.vol_i + 1)
+    S.set_hero("VOL", S.vol_i)     # 0 is mute, so the index IS the reading
 
 
 def begin():

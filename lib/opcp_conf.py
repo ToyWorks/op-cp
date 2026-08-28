@@ -20,7 +20,11 @@ MIX_BUDGET = 255             # total channel volume allowed to sound at once.
 MAX_CH_VOL = 255
 FIFTHS = False
 SPREAD_MS = 4
-VOLS = (90, 140, 190, 225, 255)
+# Six positions, and the first is silence. The 0 key cycles them, so the
+# instrument can be muted from its own keyboard without unplugging it or
+# reaching for a host — which is what you want on a desk beside someone
+# else's meeting. S.vol_i IS the number shown, so it reads 0..5.
+VOLS = (0, 90, 140, 190, 225, 255)
 CH_TRIM = {0: 1.0, 1: 1.0, 2: 0.85, 4: 0.55, 5: 1.0, 6: 0.5}
 
 # ------------------------------------------------------------------ palette
