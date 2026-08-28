@@ -105,6 +105,20 @@ all — see [dance/README.md](dance/README.md) for how UIFlow2 gets onto it.
 It shares this repo's toolchain: `make venv` here, then `make check BOARD=…`
 in `dance/`.
 
+## Companion: tiny-MHS, the agent layer
+
+OP-CP is also the canonical instrument of
+[**tiny-MHS**](https://github.com/ToyWorks/tiny-mhs) — a minimal standard for
+describing hardware to a language model, which vendors this repo as a
+submodule and drives it **without modifying a line of it**. The properties
+that make that possible are deliberate here and worth naming: `app.py` stays
+importable, modules import strictly one way, and the keyboard is just one
+caller among possible others — so a sibling layer can sit where `opcp_keys`
+sits and give an agent the same seat. Over there, an agent discovers the
+sequencer from its self-description, composes its own sixteen-step patterns,
+arranges bank-chains into a set, and gets refused in prose when it asks for
+more gain than the enclosure can honestly use.
+
 ## Documentation
 
 | | |
