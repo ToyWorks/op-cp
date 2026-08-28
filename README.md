@@ -105,6 +105,15 @@ all — see [dance/README.md](dance/README.md) for how UIFlow2 gets onto it.
 It shares this repo's toolchain: `make venv` here, then `make check BOARD=…`
 in `dance/`.
 
+## Companion: Stage, the watcher
+
+[`stage/`](stage/) is the third machine — a StickS3 that watches the show: a
+status panel animating to OP-CP's ESP-NOW broadcast, a microphone that
+measures the tempo actually reaching the room (±2 bpm against the radio's
+ground truth), and the emergency stop. Receive-only by construction: it has
+no transmit path, so unplugging it cannot disturb the music. The instrument
+lives here; its agent-facing control interface lives in tiny-MHS (below).
+
 ## Companion: tiny-MHS, the agent layer
 
 OP-CP is also the canonical instrument of
