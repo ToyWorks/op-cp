@@ -54,7 +54,20 @@ PALETTE = (
 )
 PALETTE_NAMES = [p[0] for p in PALETTE]
 
-STYLES = ("face", "fist", "bars", "off")
+STYLES = ("face", "tap", "fist", "bars", "off")
+
+# The tap sprites are a seven-frame cycle, and the beat only tells us where
+# ONE of those frames belongs: the strike. So the frame is chosen from a
+# phase that runs between beats, and every beat snaps the phase back to the
+# strike. Prediction is only ever used for anticipation; the beat itself is
+# always ground truth, so a tempo change costs at most one late landing.
+#
+# (percent of the measured beat interval, index into _tap_png). Reading the
+# source strip: 4 is the impact, 5-7 the recoil, 1 the long hover, 2-3 the
+# descent. So the strike sits at zero and the descent is the last fifth.
+_TAP_PHASE = ((0, 3), (6, 4), (13, 5), (21, 6), (30, 0), (74, 1), (88, 2))
+_TAP_FRAMES = 7
+_TAP_H = 160                 # tools/build_tap.py owns this; read back below
 
 # Frames a hit decays over. The node ticks at roughly 100 Hz, so 6 frames was
 # a 60 ms punch — over before the eye caught it, which read as "the motion is
@@ -67,14 +80,17 @@ LEVEL_MAX = 255
 _lcd = None
 _glove_png = None            # the sprite, if it deployed with us
 _glove_wh = (0, 0)           # its real size, read from the PNG header
+_tap_png = []                # the seven-frame cycle, if it deployed with us
+_tap_wh = (0, 0)
 _font_small = None
 _font_mid = None
 _font_big = None
 W = 135
 H = 240
 
-# geometry, filled by layout()
+# geometry, filled by _place()
 _HEAD_Y = 4
+_HEAD_H = 48
 _ART_Y = 30
 _ART_H = 140
 _TICK_Y = 182
@@ -88,6 +104,10 @@ _frame = 0
 _gaze = 0
 _gaze_until = 0
 _lid_until = 0
+_tap_prev_hit = 0            # for the rising edge that means "a beat landed"
+_tap_since = 0               # ticks since that edge
+_tap_period = 0              # ticks between the last two, measured not assumed
+_tap_shown = -1              # which frame is on the panel right now
 
 # Where the eyes wander to. A fixed ring rather than randomness: it is
 # cheaper, it never picks the same place twice in a row, and on a panel this
@@ -96,15 +116,27 @@ _GAZE_RING = (0, 5, 5, 0, -5, -5, 0, 3, -3, 0)
 
 
 def _load(name):
-    """Read a sprite. Deployed flat next to main.py on the device, and under
-    examples/stage-node/ on the host — same lookup dance uses."""
-    for path in (name, "examples/stage-node/" + name):
+    """Read a sprite. Deployed flat next to main.py on the device, and found
+    beside this file on the host — same lookup dance uses."""
+    here = __file__.rsplit("/", 1)[0] if "/" in __file__ else "."
+    for path in (name, here + "/" + name,
+                 "vendor/op-cp/stage/lib/" + name):
         try:
             with open(path, "rb") as f:
                 return f.read()
         except OSError:
             pass
     return None
+
+
+def _png_wh(blob):
+    """A PNG's real size from its own header — IHDR puts width and height at
+    bytes 16..24, big-endian. Sizing a sprite from the geometry around it
+    instead is what put the impact strokes on the step ruler."""
+    if blob and len(blob) > 24:
+        return (int.from_bytes(blob[16:20], "big"),
+                int.from_bytes(blob[20:24], "big"))
+    return (0, 0)
 
 
 def layout(lcd, w, h):
@@ -115,20 +147,27 @@ def layout(lcd, w, h):
     for the label. drawString on a panel with no font set silently draws
     nothing, which is exactly the bug the shot renderer caught.
     """
-    global _lcd, W, H, _ART_Y, _ART_H, _TICK_Y, _LABEL_Y
+    global _lcd, W, H
     global _font_small, _font_mid, _font_big, _glove_png, _glove_wh
+    global _tap_png, _tap_wh, _TAP_H
     global _frame, _gaze, _gaze_until, _lid_until
+    global _tap_prev_hit, _tap_since, _tap_period, _tap_shown
     _lcd = lcd
     W, H = w, h
     _glove_png = _load("glove.png")
-    # The sprite's own size, not an assumed one: IHDR puts width and height at
-    # bytes 16..24, big-endian. Positioning the figure from the primitive
-    # geometry instead put the impact strokes on the step ruler.
-    if _glove_png and len(_glove_png) > 24:
-        _glove_wh = (int.from_bytes(_glove_png[16:20], "big"),
-                     int.from_bytes(_glove_png[20:24], "big"))
+    _glove_wh = _png_wh(_glove_png)
+    if not _glove_wh[0]:
+        _glove_png = None
+    # The tap cycle is all-or-nothing: a partial set would play a hand that
+    # jumps back to a pose that never happened, which is worse than not
+    # offering the style at all.
+    tap = [_load("tap_%d.png" % (i + 1)) for i in range(_TAP_FRAMES)]
+    if all(tap):
+        _tap_png = tap
+        _tap_wh = _png_wh(tap[0])
+        _TAP_H = _tap_wh[1]
     else:
-        _glove_png, _glove_wh = None, (0, 0)
+        _tap_png, _tap_wh = [], (0, 0)
     fonts = getattr(lcd, "FONTS", None)
     if fonts is not None:
         _font_small = getattr(fonts, "DejaVu12", None)
@@ -137,23 +176,45 @@ def layout(lcd, w, h):
         # footer word, which is how the style label ran off the bottom.
         _font_big = getattr(fonts, "DejaVu40", None) \
             or getattr(fonts, "DejaVu24", None) or _font_mid
-    # Proportions, not pixels: header, then the subject taking the whole
-    # middle, then the bar ruler, then the word. The panel is 135 wide and
-    # there is no second column to put anything in.
-    # OP-1 proportions: a small-caps label, a big thin numeral under it, the
-    # figure in the middle with room around it, then the ruler and the word.
-    # The figure is a third of the panel, not most of it — that space IS the
-    # style.
-    head_h = 52
-    _ART_Y = head_h
-    _LABEL_Y = H - 28
-    _TICK_Y = _LABEL_Y - 20
-    _ART_H = _TICK_Y - _ART_Y - 6
+    _place(None)
     _last.clear()
     # The face's wandering is driven by a free-running frame counter, so
     # laying out again restarts it. Without this the animation's phase
     # survives a re-layout and nothing that renders it is reproducible.
     _frame = _gaze = _gaze_until = _lid_until = 0
+    # Same reason for the tap's beat phase: it is measured from the frames
+    # that went before, so laying out again has to forget them or nothing
+    # that renders this panel is reproducible.
+    _tap_prev_hit = _tap_since = _tap_period = 0
+    _tap_shown = -1
+
+
+def _place(style):
+    """Where the four regions sit, for the subject about to be drawn.
+
+    Proportions, not pixels: header, subject, bar ruler, word. The panel is
+    135 wide and there is no second column to put anything in.
+
+    Two layouts, because one subject is a fixed-size sprite and the rest are
+    drawn to fit. The drawn subjects get OP-1 proportions — a small-caps
+    label, a big thin numeral under it, and a figure about a third of the
+    panel, because that space IS the style. The tap cycle cannot be scaled
+    (drawPng neither scales nor rotates), so instead the chrome yields to it:
+    one compact header line, and the sprite gets its full height. Anything
+    else leaves the bottom two fifths of the panel permanently black, which
+    is the complaint this style exists to answer.
+
+    Safe to run per frame because a style change repaints the whole panel —
+    stage_table calls clear() when the subject changes, so no region ever
+    inherits a box drawn under the other layout.
+    """
+    global _HEAD_H, _ART_Y, _ART_H, _TICK_Y, _LABEL_Y
+    tall = style == "tap" and _tap_png
+    _HEAD_H = 22 if tall else 48
+    _ART_Y = _HEAD_Y + _HEAD_H
+    _LABEL_Y = H - 28
+    _TICK_Y = _LABEL_Y - 20
+    _ART_H = _TAP_H if tall else (_TICK_Y - _ART_Y - 6)
 
 
 def _stroke_round(x, y, w, h, r, colour):
@@ -189,19 +250,26 @@ def clear():
     owns the whole panel, and everything after it erases only its own box."""
     if _lcd is None:
         return
-    global _eye_box, _mouth_box, _strike_box
+    global _eye_box, _mouth_box, _strike_box, _tap_shown
     _lcd.fillScreen(BG)
     _last.clear()
     _eye_box = _mouth_box = _strike_box = None
+    _tap_shown = -1          # nothing on the panel is the tap's any more
 
 
 # ------------------------------------------------------------------ regions
 def _header(name, bpm, fresh, accent):
     """A small-caps label with a big thin numeral under it — the OP-1's own
-    way of putting a parameter on screen."""
-    if not _changed("head", (name, bpm, fresh, accent)):
+    way of putting a parameter on screen.
+
+    Where the subject has claimed the height (the tap cycle), the same three
+    facts go on one line at small-caps size instead. The numeral shrinking is
+    a real loss of the OP-1 look; a figure with the bottom two fifths of the
+    panel left black was a bigger one.
+    """
+    if not _changed("head", (name, bpm, fresh, accent, _HEAD_H)):
         return
-    _lcd.fillRect(0, _HEAD_Y, W, 50, BG)
+    _lcd.fillRect(0, _HEAD_Y, W, _HEAD_H, BG)
     if _font_small is not None:
         _lcd.setFont(_font_small)
     _lcd.setTextColor(accent, BG)
@@ -209,10 +277,17 @@ def _header(name, bpm, fresh, accent):
     _lcd.setTextColor(DIM, BG)
     label = name[:7]
     _lcd.drawString(label, W - 6 - _lcd.textWidth(label), _HEAD_Y)
+    reading = "%d" % bpm if (bpm and fresh) else "--"
+    if _HEAD_H < 40:
+        # Measured, not guessed: the font is an alias on this firmware and a
+        # hardcoded column ran the number into the word beside it.
+        _lcd.setTextColor(FG if fresh else DIM, BG)
+        _lcd.drawString(reading, 6 + _lcd.textWidth("BPM") + 5, _HEAD_Y)
+        return
     if _font_big is not None:
         _lcd.setFont(_font_big)
     _lcd.setTextColor(FG if fresh else DIM, BG)
-    _lcd.drawString("%d" % bpm if (bpm and fresh) else "--", 4, _HEAD_Y + 13)
+    _lcd.drawString(reading, 4, _HEAD_Y + 13)
 
 
 def _ticks(step, accent, accent_deep, fresh):
@@ -489,7 +564,71 @@ def _bars(hit, level, accent, accent_deep):
             _lcd.fillRect(x, base - h, bw, 4, accent)     # the tip lights
 
 
-_SUBJECTS = {"face": _face, "fist": _fist, "bars": _bars}
+def _tap(hit, level, accent, accent_deep):
+    """The tap cycle: a robotic hand that plays the beat on a pad.
+
+    Seven sprites, panel-sized, black baked in (`art/README.md` says where
+    they came from). This is the one subject that does not erase anything,
+    and that is the point: a frame covers the whole art box in a single
+    drawPng, so there is never a moment where the box has been cleared and
+    not yet painted. That moment IS the flicker on this panel — the reason
+    every other subject here goes to such lengths to erase exactly the box it
+    is about to fill.
+
+    The cost is that the art cannot follow the palette; drawPng cannot tint,
+    and the three inks are baked. That matches the OP-1 idiom the panel
+    already follows — each effect screen keeps its own fixed scheme — and the
+    palette still drives the numeral, the ruler and the word.
+
+    Timing is measured, never assumed. The beat gives us the strike and
+    nothing else, so the interval between the last two strikes is counted in
+    ticks and the remaining six frames are spread over it. That makes the
+    animation independent of both the tempo and the rate this loop happens to
+    run at, and it re-synchronises on every beat: the worst a tempo change
+    can do is land one strike late.
+    """
+    global _tap_prev_hit, _tap_since, _tap_period, _tap_shown
+    if not _tap_png:
+        _fist(hit, level, accent, accent_deep)          # art did not deploy
+        return
+
+    beat = hit > _tap_prev_hit
+    _tap_prev_hit = hit
+    if beat:
+        # A plausible interval only. Two beats a tick apart is a double
+        # trigger, and a gap of minutes is the show having stopped; neither
+        # should be averaged into the pacing.
+        if 4 <= _tap_since <= 600:
+            _tap_period = _tap_since if not _tap_period \
+                else (_tap_period + _tap_since) // 2
+        _tap_since = 0
+    else:
+        _tap_since += 1
+
+    period = _tap_period or 45
+    if _tap_since > period * 2:
+        idx = 0                       # two beats missed: back to the hover
+    else:
+        # Past 100% the hand simply stays poised on the last frame, which is
+        # the descent — a beat running late holds the strike, it does not
+        # invent one.
+        pct = (_tap_since * 100) // period
+        idx = _TAP_PHASE[0][1]
+        for at, frame in _TAP_PHASE:
+            if pct >= at:
+                idx = frame
+    if idx == _tap_shown:
+        return
+    _tap_shown = idx
+    # Measured on the StickS3: 14 ms for this 135x160 blit, about seven times
+    # a beat. That is the SPI bus and not the PNG decode — pre-decoding all
+    # seven into canvases and pushing those costs 392 KB and still takes
+    # 9.7 ms, so it is not worth the memory. The loop absorbs it: the mic
+    # already digests a second of audio in one ~60 ms gulp.
+    _lcd.drawPng(_tap_png[idx], (W - _tap_wh[0]) // 2, _ART_Y)
+
+
+_SUBJECTS = {"face": _face, "tap": _tap, "fist": _fist, "bars": _bars}
 
 
 # ------------------------------------------------------------------ entry
@@ -504,6 +643,7 @@ def draw(style, palette_i, hit, level, step, bpm, fresh, label, name="STAGE"):
             _last.clear()
             _last["art"] = ("off",)
         return
+    _place(style)
     _header(name, bpm, fresh, accent)
     _SUBJECTS.get(style, _face)(hit, level, accent, accent_deep)
     _ticks(step, accent, accent_deep, fresh)

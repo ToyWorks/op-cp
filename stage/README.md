@@ -15,10 +15,11 @@ the interface there.
 | File | Role |
 | --- | --- |
 | `lib/stage_board.py` | The only file that touches M5: screen, button, and the microphone's queued double-buffer capture. |
-| `lib/stage_anim.py` | The panel: face / fist / bars, drawn in dance's design language — one accent hue, tight erases, art-based punch. |
+| `lib/stage_anim.py` | The panel: tap / face / fist / bars, in dance's design language — one accent hue, tight erases. `tap` is the seven-frame sprite cycle; the rest are drawn. |
 | `lib/stage_beat.py` | The ear's logic: dance's onset detector made standalone, plus a grid fit over the onset train for ±2 bpm tempo. |
 | `lib/stage_espnow.py` | Receive-only ESP-NOW listener for OP-CP's step broadcast. It has no transmit path, deliberately. |
-| `art/` | The punch frames and how they were made. |
+| `art/` | The tap and punch frames, how they were made, and what the panel had to be told about them. |
+| `tools/build_tap.py` | Source strip -> the seven panel sprites. Re-run it if the art changes. |
 
 ## Facts measured on this hardware
 
