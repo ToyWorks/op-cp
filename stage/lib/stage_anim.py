@@ -19,6 +19,8 @@
 # the box about to be painted. Text is the expensive primitive, so the header
 # and the label repaint only when their words actually change.
 
+import time
+
 # Teenage Engineering's OP-1 draws its effect screens as NEON LINE ART: thin
 # saturated strokes on black, big thin numerals, small-caps labels, and a lot
 # of black. Not white fills. Everything below follows that.
@@ -104,9 +106,9 @@ _frame = 0
 _gaze = 0
 _gaze_until = 0
 _lid_until = 0
-_tap_prev_hit = 0            # for the rising edge that means "a beat landed"
-_tap_since = 0               # ticks since that edge
-_tap_period = 0              # ticks between the last two, measured not assumed
+_tap_prev_hit = 0            # fallback edge, for callers that pass no beat
+_tap_at = 0                  # ticks_ms of the last strike
+_tap_period = 0              # ms between the last two, measured not assumed
 _tap_shown = -1              # which frame is on the panel right now
 
 # Where the eyes wander to. A fixed ring rather than randomness: it is
@@ -151,7 +153,7 @@ def layout(lcd, w, h):
     global _font_small, _font_mid, _font_big, _glove_png, _glove_wh
     global _tap_png, _tap_wh, _TAP_H
     global _frame, _gaze, _gaze_until, _lid_until
-    global _tap_prev_hit, _tap_since, _tap_period, _tap_shown
+    global _tap_prev_hit, _tap_at, _tap_period, _tap_shown
     _lcd = lcd
     W, H = w, h
     _glove_png = _load("glove.png")
@@ -185,7 +187,7 @@ def layout(lcd, w, h):
     # Same reason for the tap's beat phase: it is measured from the frames
     # that went before, so laying out again has to forget them or nothing
     # that renders this panel is reproducible.
-    _tap_prev_hit = _tap_since = _tap_period = 0
+    _tap_prev_hit = _tap_at = _tap_period = 0
     _tap_shown = -1
 
 
@@ -258,7 +260,7 @@ def clear():
 
 
 # ------------------------------------------------------------------ regions
-def _header(name, bpm, fresh, accent):
+def _header(name, bpm, fresh, accent, source="link"):
     """A small-caps label with a big thin numeral under it — the OP-1's own
     way of putting a parameter on screen.
 
@@ -267,13 +269,18 @@ def _header(name, bpm, fresh, accent):
     a real loss of the OP-1 look; a figure with the bottom two fifths of the
     panel left black was a bigger one.
     """
-    if not _changed("head", (name, bpm, fresh, accent, _HEAD_H)):
+    if not _changed("head", (name, bpm, fresh, accent, _HEAD_H, source)):
         return
     _lcd.fillRect(0, _HEAD_Y, W, _HEAD_H, BG)
     if _font_small is not None:
         _lcd.setFont(_font_small)
+    # The word labels the number, so it has to say where the number came
+    # from. Someone pressing the side key needs to see that it did something,
+    # and anyone reading the panel later needs to know whether the tempo is
+    # what the sequencer claims or what the room delivered.
+    unit = "MIC" if source == "mic" else "BPM"
     _lcd.setTextColor(accent, BG)
-    _lcd.drawString("BPM", 6, _HEAD_Y)
+    _lcd.drawString(unit, 6, _HEAD_Y)
     _lcd.setTextColor(DIM, BG)
     label = name[:7]
     _lcd.drawString(label, W - 6 - _lcd.textWidth(label), _HEAD_Y)
@@ -282,7 +289,7 @@ def _header(name, bpm, fresh, accent):
         # Measured, not guessed: the font is an alias on this firmware and a
         # hardcoded column ran the number into the word beside it.
         _lcd.setTextColor(FG if fresh else DIM, BG)
-        _lcd.drawString(reading, 6 + _lcd.textWidth("BPM") + 5, _HEAD_Y)
+        _lcd.drawString(reading, 6 + _lcd.textWidth(unit) + 5, _HEAD_Y)
         return
     if _font_big is not None:
         _lcd.setFont(_font_big)
@@ -323,7 +330,7 @@ def _label(text, accent):
 
 
 # ------------------------------------------------------------------ subjects
-def _face(hit, level, accent, accent_deep):
+def _face(hit, level, accent, accent_deep, beat=None):
     """Eyes and a mouth, and neither of them a mask.
 
     Three things dance's face taught, and all three are here: the eyes WANDER
@@ -378,7 +385,7 @@ def _face(hit, level, accent, accent_deep):
         _mouth_box = (cx - mw // 2 - 1, my - mh // 2 - 1, mw + 3, mh + 3)
 
 
-def _fist(hit, level, accent, accent_deep):
+def _fist(hit, level, accent, accent_deep, beat=None):
     """A boxing glove that lands on the beat, drawn OP-1 style.
 
     The glove is a sprite (examples/stage-node/art/README.md says where it
@@ -398,7 +405,7 @@ def _fist(hit, level, accent, accent_deep):
     """
     global _strike_box
     if _glove_png is None:
-        _fist_primitive(hit, level, accent, accent_deep)
+        _fist_primitive(hit, level, accent, accent_deep, beat)
         return
 
     gw, gh = _glove_wh
@@ -484,7 +491,7 @@ def _fist(hit, level, accent, accent_deep):
         _strike_box = None
 
 
-def _fist_primitive(hit, level, accent, accent_deep):
+def _fist_primitive(hit, level, accent, accent_deep, beat=None):
     """The hand, drawn without art. Kept so the panel still works if the
     sprite did not deploy, and exercised by tools/animcheck.py."""
     global _strike_box
@@ -544,7 +551,7 @@ def _fist_primitive(hit, level, accent, accent_deep):
         _strike_box = (cx - reach - 13, iy - 11, 2 * (reach + 13) + 2, 17)
 
 
-def _bars(hit, level, accent, accent_deep):
+def _bars(hit, level, accent, accent_deep, beat=None):
     """A meter. The columns hold one colour; only the lit tip moves."""
     n = 5
     filled = 1 + (level * n) // (LEVEL_MAX + 1)
@@ -564,7 +571,7 @@ def _bars(hit, level, accent, accent_deep):
             _lcd.fillRect(x, base - h, bw, 4, accent)     # the tip lights
 
 
-def _tap(hit, level, accent, accent_deep):
+def _tap(hit, level, accent, accent_deep, beat=None):
     """The tap cycle: a robotic hand that plays the beat on a pad.
 
     Seven sprites, panel-sized, black baked in (`art/README.md` says where
@@ -580,51 +587,63 @@ def _tap(hit, level, accent, accent_deep):
     already follows — each effect screen keeps its own fixed scheme — and the
     palette still drives the numeral, the ruler and the word.
 
-    Timing is measured, never assumed. The beat gives us the strike and
-    nothing else, so the interval between the last two strikes is counted in
-    ticks and the remaining six frames are spread over it. That makes the
-    animation independent of both the tempo and the rate this loop happens to
-    run at, and it re-synchronises on every beat: the worst a tempo change
-    can do is land one strike late.
+    THE STRIKE IS THE BEAT, and everything else is arranged around it. The
+    caller says when a drum landed; frame 4 goes up on that call and on no
+    other, so the impact cannot drift away from the sound no matter what the
+    loop is doing. The other six are spread over the interval between the
+    last two strikes, measured in milliseconds — which is why they are
+    right at any tempo and at any loop rate, and why the descent frames land
+    just before the next beat instead of at some fixed count of ticks.
+
+    A missed beat costs one late landing and nothing more: past 100% the hand
+    holds the last descent frame, poised, until the strike actually arrives.
+
+    `beat` is the caller's signal. Where it is not given, a rise in `hit`
+    stands in — which is what this used to infer from alone, and it is the
+    weaker of the two: `hit` decays, and a soft strike during a loud one's
+    tail does not raise it, so beats went missing exactly when the music was
+    busiest.
     """
-    global _tap_prev_hit, _tap_since, _tap_period, _tap_shown
+    global _tap_prev_hit, _tap_at, _tap_period, _tap_shown
     if not _tap_png:
-        _fist(hit, level, accent, accent_deep)          # art did not deploy
+        _fist(hit, level, accent, accent_deep, beat)    # art did not deploy
         return
 
-    beat = hit > _tap_prev_hit
+    if beat is None:
+        beat = hit > _tap_prev_hit
     _tap_prev_hit = hit
-    if beat:
-        # A plausible interval only. Two beats a tick apart is a double
-        # trigger, and a gap of minutes is the show having stopped; neither
-        # should be averaged into the pacing.
-        if 4 <= _tap_since <= 600:
-            _tap_period = _tap_since if not _tap_period \
-                else (_tap_period + _tap_since) // 2
-        _tap_since = 0
-    else:
-        _tap_since += 1
 
-    period = _tap_period or 45
-    if _tap_since > period * 2:
-        idx = 0                       # two beats missed: back to the hover
+    now = time.ticks_ms()
+    if beat:
+        gap = time.ticks_diff(now, _tap_at)
+        # A plausible interval only. Two strikes 60 ms apart is a flam, not a
+        # tempo, and a gap of minutes is the show having stopped; neither
+        # belongs in the pacing.
+        if _tap_at and 90 <= gap <= 4000:
+            _tap_period = gap if not _tap_period else (_tap_period + gap) // 2
+        _tap_at = now
+
+    period = _tap_period or 500
+    if not _tap_at:
+        idx = 0
     else:
-        # Past 100% the hand simply stays poised on the last frame, which is
-        # the descent — a beat running late holds the strike, it does not
-        # invent one.
-        pct = (_tap_since * 100) // period
-        idx = _TAP_PHASE[0][1]
-        for at, frame in _TAP_PHASE:
-            if pct >= at:
-                idx = frame
+        since = time.ticks_diff(now, _tap_at)
+        if since > period * 2:
+            idx = 0                   # two beats missed: back to the hover
+        else:
+            pct = (since * 100) // period
+            idx = _TAP_PHASE[0][1]
+            for at, frame in _TAP_PHASE:
+                if pct >= at:
+                    idx = frame
     if idx == _tap_shown:
         return
     _tap_shown = idx
     # Measured on the StickS3: 14 ms for this 135x160 blit, about seven times
     # a beat. That is the SPI bus and not the PNG decode — pre-decoding all
     # seven into canvases and pushing those costs 392 KB and still takes
-    # 9.7 ms, so it is not worth the memory. The loop absorbs it: the mic
-    # already digests a second of audio in one ~60 ms gulp.
+    # 9.7 ms, so it is not worth the memory. The loop absorbs it: at 133 Hz
+    # a tick is 7.5 ms, so a frame change costs two ticks' worth of slack.
     _lcd.drawPng(_tap_png[idx], (W - _tap_wh[0]) // 2, _ART_Y)
 
 
@@ -632,7 +651,8 @@ _SUBJECTS = {"face": _face, "tap": _tap, "fist": _fist, "bars": _bars}
 
 
 # ------------------------------------------------------------------ entry
-def draw(style, palette_i, hit, level, step, bpm, fresh, label, name="STAGE"):
+def draw(style, palette_i, hit, level, step, bpm, fresh, label,
+         name="STAGE", source="link", beat=None):
     """One frame. Cheap when nothing changed — every region self-gates."""
     if _lcd is None:
         return
@@ -644,7 +664,11 @@ def draw(style, palette_i, hit, level, step, bpm, fresh, label, name="STAGE"):
             _last["art"] = ("off",)
         return
     _place(style)
-    _header(name, bpm, fresh, accent)
-    _SUBJECTS.get(style, _face)(hit, level, accent, accent_deep)
+    _header(name, bpm, fresh, accent, source)
+    # Every subject takes the same frame: what is ringing (hit), how loud
+    # (level), the accent, and whether a drum landed on THIS call. Only the
+    # tap needs the last one — but a subject that has to be dispatched
+    # specially is a subject that gets forgotten when the next one is added.
+    _SUBJECTS.get(style, _face)(hit, level, accent, accent_deep, beat)
     _ticks(step, accent, accent_deep, fresh)
     _label(label, accent)
