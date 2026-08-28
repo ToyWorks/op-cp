@@ -9,6 +9,8 @@
 # the last frame, and the button never fires. The conformance suite drives the
 # same table either way.
 
+import time
+
 import stage_anim
 
 BTN_LONG_MS = 800        # a release must be deliberate, not a bounce
@@ -33,18 +35,58 @@ MIC_STRIDE = 4                   # every 4th sample is plenty for an envelope
 _bufs = None
 _queue = []
 _t0 = None
+_mic_next = None         # next time the mic queue is worth asking about
+_M5 = None               # the module, cached — see mic_poll for why
 
 _lcd = None
 _btn = None
+_btn2 = None
 _w = 135
 _h = 240
 _shown = None
 
 
+def slow_clock():
+    """240 MHz is more than this node's job needs, and the heat is real.
+
+    A device that watches, listens and repaints a 135x240 panel is not
+    compute-bound; 160 MHz is the lowest step that still leaves WiFi and
+    ESP-NOW fully supported. Measured with esp32.mcu_temperature(), which is
+    also reported by health() so this stays a number and not a feeling.
+
+    Called before any peripheral starts: changing the clock afterwards can
+    leave a driver's timing calibrated against the old one.
+    """
+    try:
+        import machine
+        machine.freq(160000000)
+        return machine.freq()
+    except Exception:
+        return 0
+
+
+def mcu_temp_c():
+    """Die temperature, or None where the chip does not offer one."""
+    try:
+        import esp32
+        return int(esp32.mcu_temperature())
+    except Exception:
+        return None
+
+
+def cpu_mhz():
+    try:
+        import machine
+        return machine.freq() // 1000000
+    except Exception:
+        return 0
+
+
 def begin():
-    global present, _lcd, _btn, _w, _h
+    global present, _lcd, _btn, _btn2, _w, _h, _M5
     try:
         import M5
+        _M5 = M5
         M5.begin()
         _lcd = M5.Lcd
         _w, _h = _lcd.width(), _lcd.height()
@@ -54,6 +96,10 @@ def begin():
         except Exception:
             pass
         _btn = getattr(M5, "BtnA", None)
+        # The StickS3's second key, on the side. getattr per op-cp rule 1:
+        # M5.BtnB is listed on this firmware but a board without the key
+        # still has to run, and the panel is useless if begin() dies here.
+        _btn2 = getattr(M5, "BtnB", None)
         stage_anim.layout(_lcd, _w, _h)
         present = True
     except Exception:
@@ -74,7 +120,7 @@ def mic_begin():
       the last design: its ~70 ms re-arm hole inflated every gap that
       crossed a buffer boundary and read 100 bpm as 90.
     """
-    global mic_present, _bufs, _queue, _t0
+    global mic_present, _bufs, _queue, _t0, _mic_next, _M5
     if not present:
         return False
     try:
@@ -91,7 +137,7 @@ def mic_begin():
         _bufs = (bytearray(MIC_BUF_SAMPLES * 2),
                  bytearray(MIC_BUF_SAMPLES * 2))
         _queue = []
-        _t0 = None
+        _t0 = _mic_next = None
         if mic_present:
             M5.Mic.record(_bufs[0], MIC_RATE, False)
             M5.Mic.record(_bufs[1], MIC_RATE, False)
@@ -99,6 +145,9 @@ def mic_begin():
     except Exception:
         mic_present = False
     return mic_present
+
+
+MIC_CHECK_MS = 120       # how often the queue depth is worth asking about
 
 
 def mic_poll():
@@ -110,11 +159,29 @@ def mic_poll():
     second costs ~54 ms; each finished buffer is re-queued before the
     other runs out, so a tick stall shorter than a second loses nothing.
     """
-    global _t0
-    if not mic_present or not _queue:
+    global _t0, _mic_next
+    if not mic_present or not _queue or _M5 is None:
         return []
-    import M5
-    import time
+    M5 = _M5
+    # MEASURED, and the single reason this node used to run at 16 Hz: an
+    # `import` inside a function costs ~54 ms on this firmware. `time` is not
+    # in sys.modules, so every call re-walked sys.path — '', '.frozen',
+    # '/lib', '/system', '/flash/libs' — and a filesystem miss on this board
+    # is not cheap. Two of them sat in the hot path here and cost 108 ms a
+    # tick, dwarfing the work they were fetched to do.
+    #
+    # So: `time` is imported at module scope, and M5 is cached by begin()
+    # rather than imported here (it must stay lazy — this module has to load
+    # on a host that has no M5 at all). Nothing about this is specific to
+    # the microphone; anything called per tick on this board must not import.
+    #
+    # The queue is also only asked about every MIC_CHECK_MS. A buffer
+    # finishes once a second and the digest is late-tolerant by design, so
+    # asking more often was work for an answer that could not have changed.
+    now = time.ticks_ms()
+    if _mic_next is not None and time.ticks_diff(_mic_next, now) > 0:
+        return []
+    _mic_next = time.ticks_add(now, MIC_CHECK_MS)
     out = []
     try:
         while True:
@@ -170,6 +237,21 @@ def button_held_ms():
         return 0
 
 
+def button2_pressed():
+    """Is the side key (BtnB) down? False where there is no second key.
+
+    A level, not an edge, for the same reason button_held_ms() is a duration:
+    the edge belongs in the table, where the state it changes lives and where
+    the tests can drive it.
+    """
+    if _btn2 is None:
+        return False
+    try:
+        return bool(_btn2.isPressed())
+    except Exception:
+        return False
+
+
 def draw(frame):
     """Route one frame to the screen.
 
@@ -201,6 +283,8 @@ def draw(frame):
     try:
         stage_anim.draw(frame["style"], frame["palette"], frame["hit"],
                         frame["level"], frame["step"], frame["bpm"],
-                        frame["fresh"], frame["label"], frame["name"])
+                        frame["fresh"], frame["label"], frame["name"],
+                        frame.get("source", "link"),
+                        frame.get("beat", None))
     except Exception:
         pass                 # a screen that will not draw must not stop a show

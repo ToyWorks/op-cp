@@ -20,7 +20,17 @@ MIX_BUDGET = 255             # total channel volume allowed to sound at once.
 MAX_CH_VOL = 255
 FIFTHS = False
 SPREAD_MS = 4
-VOLS = (90, 140, 190, 225, 255)
+# Six positions, and the first is silence. The 0 key cycles them, so the
+# instrument can be muted from its own keyboard without unplugging it or
+# reaching for a host — which is what you want on a desk beside someone
+# else's meeting. S.vol_i IS the number shown, so it reads 0..5.
+#
+# Spaced roughly geometrically, not evenly. Loudness is perceived closer to
+# logarithmically than linearly, so an even ladder spends most of its steps
+# in the top half of the range and offers nothing quiet: the old first
+# audible step was 90/255, which on a desk is already too loud to sit beside.
+# 25 is a step you can leave running in a room with other people in it.
+VOLS = (0, 25, 60, 110, 175, 255)
 CH_TRIM = {0: 1.0, 1: 1.0, 2: 0.85, 4: 0.55, 5: 1.0, 6: 0.5}
 
 # ------------------------------------------------------------------ palette

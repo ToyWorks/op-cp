@@ -51,11 +51,20 @@ def setup():
     except Exception:
         pass
 
-    A.begin()
-    Q.storage_init()                 # SD if a card is in, /flash otherwise
+    # The radio goes up FIRST, and the order is load-bearing. WiFi allocates
+    # from the ESP-IDF heap, not MicroPython's, and it wants a contiguous
+    # block of about 110 KB. MEASURED on the Cardputer-ADV, which has no
+    # PSRAM: 140 KB free with a 110 KB largest block before setup, 27 KB free
+    # with a 9 KB largest block after the PCM kit is loaded. Starting it last
+    # meant espnow.begin() raised "WiFi Out of Memory" and the stage node
+    # heard nothing — silently, because opcp_link swallows the failure so a
+    # missing radio can never stop the instrument.
     if S.link_on:
         import opcp_link
         opcp_link.begin()            # broadcast steps for the StackChan
+
+    A.begin()
+    Q.storage_init()                 # SD if a card is in, /flash otherwise
 
     # Optional hardware: a plain Cardputer has no matrix keyboard, and the
     # program should still run and show its screen if this fails.
