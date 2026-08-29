@@ -44,16 +44,26 @@ board and has nothing to do with ESP32. Ignore all three.
 
 ## Audio
 
-Facts about `playRaw`, all measured rather than assumed:
+Facts about `playRaw` and `playWav`, all measured rather than assumed:
 
-- **It interprets any buffer as int16**, whatever type you pass. `bytearray`,
-  `array('B')` and `array('h')` behave identically — 8000 bytes plays for 459 ms
-  at rate 8000, i.e. 4000 samples. There is no uint8 path.
-- **The sample-rate argument really works**, and is how notes are pitched: one
-  buffer per melodic track, replayed at `rate * 2**(semitones/12)`. Usable range
-  is **700 Hz to 48 kHz**, verified against expected durations. Outside it, fold
+- **`playRaw` interprets any buffer as int16**, whatever type you pass.
+  `bytearray`, `array('B')` and `array('h')` behave identically — 8000 bytes
+  plays for 459 ms at rate 8000, i.e. 4000 samples. It has no uint8 path, and
+  8-bit samples handed to it come out as noise at double speed.
+- **`playWav` does have one.** It reads the format from the RIFF header, 8-bit
+  mono included, which is how the kit affords to be half the size. Signature on
+  this firmware is `playWav(buf, repeat, channel, stop)` — four arguments, a
+  fifth is rejected; there is **no rate argument**, the header carries it.
+- **Rewriting the header repitches it.** The sample rate at byte 24 and the byte
+  rate at byte 28 are ours to change between calls. Measured: one buffer at
+  11025, 22050 and 5512 Hz played for 301, 156 and 593 ms. That is the sampler
+  trick intact, just moved from an argument into four bytes.
+- **The rate really works**, and is how notes are pitched: one buffer per
+  melodic track, replayed at `rate * 2**(semitones/12)`. Usable range is
+  **700 Hz to 48 kHz**, verified against expected durations. Outside it, fold
   by octaves — clamping puts the note out of tune.
-- **`memoryview` slices are accepted.**
+- **`memoryview` slices are accepted** by `playRaw`. For `playWav` the buffer
+  has to be writable, since the header is rewritten in place — hold `bytearray`.
 - **`isPlaying()` leads the audio by ~39 ms** (one DMA buffer). Do not use it to
   measure durations without accounting for that.
 - **Load per sound, never as one blob.** With the app running there is ~66 KB

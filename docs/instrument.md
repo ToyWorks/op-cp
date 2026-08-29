@@ -39,18 +39,24 @@ Four pattern banks (`^P`), each holding all four tracks.
 
 ## Sound
 
-Signed-16-bit PCM, not `tone()` beeps. `M5.Speaker.tone()` is a bare square wave
-at constant amplitude — no envelope, one timbre, drums as pure tones — so it is
-the fallback here, not the sound source.
+Sampled PCM, not `tone()` beeps. `M5.Speaker.tone()` is a bare square wave at
+constant amplitude — no envelope, one timbre, drums as pure tones — so it is the
+fallback here, not the sound source.
 
 The kit is synthesised **on the host** by `make kit` into `lib/opcp_kit.bin` and
-played with `playRaw`: one buffer per melodic track, replayed at
+played with `playWav`: one buffer per melodic track, replayed at
 `rate * 2**(semitones/12)` to pitch it. Rendering it on the device costs ~5.4 s,
 which is no way to boot. The noise source is a seeded xorshift, so the blob is
 reproducible; `make audio` renders it to WAV on the host, old against new, so you
 can listen before flashing.
 
-The measured `playRaw` behaviour it relies on is in
+Samples are **unsigned 8-bit**, 18 KB for the whole kit rather than 36. That is
+a memory decision: the kit is resident for the life of the program, and on a
+board with no PSRAM the other 18 KB is what the ESP-NOW radio needs. Measured
+quantisation SNR is 27-36 dB per sound with TPDF dither — hiss on the decay
+tails if you go looking for it, against no drums at all if you do not.
+
+The measured `playWav` behaviour it relies on is in
 [uiflow2-notes.md](uiflow2-notes.md#audio).
 
 ## Files

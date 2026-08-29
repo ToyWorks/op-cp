@@ -102,18 +102,33 @@ class Mix:
 
 
 # ------------------------------------------------------------------ the kit
+def as_shipped(buf):
+    """What the device actually plays: the 8-bit blob, expanded back out.
+
+    The preview has to hear the quantisation, not the render — otherwise it
+    flatters the kit by exactly the thing that was traded away for memory.
+    Same call the packer makes, so the dither is the shipped dither.
+    """
+    u8 = SY.to_u8(buf)
+    out = SY._buf(len(u8))
+    for i in range(len(u8)):
+        out[i] = (u8[i] - 128) * 256
+    return out
+
+
 print("rendering synth buffers...")
 DRUMS = {}
 for nm in C.DRUMS:
-    DRUMS[nm[0]] = SY.render_drum(nm[0])
+    DRUMS[nm[0]] = as_shipped(SY.render_drum(nm[0]))
     print("  drum %-3s %5d samples (%d ms, %d bytes)"
           % (nm[0], len(DRUMS[nm[0]]), 1000 * len(DRUMS[nm[0]]) // SY.RATE,
-             len(DRUMS[nm[0]]) * 2))
-VOICES = [SY.render_voice(t) for t in range(3)]
+             len(DRUMS[nm[0]]) + SY.WAV_HDR))
+VOICES = [as_shipped(SY.render_voice(t)) for t in range(3)]
 for t in range(3):
     print("  voice %-5s %5d samples" % (C.TRACK_NAMES[t], len(VOICES[t])))
-total = (sum(len(b) for b in DRUMS.values()) + sum(len(b) for b in VOICES)) * 2
-print("  total buffer RAM: %d bytes (int16)" % total)
+total = (sum(len(b) for b in DRUMS.values()) + sum(len(b) for b in VOICES)
+         + SY.WAV_HDR * (len(DRUMS) + len(VOICES)))
+print("  total buffer RAM: %d bytes (8-bit WAV)" % total)
 
 
 # ------------------------------------------------------------------ a piece

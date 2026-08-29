@@ -16,13 +16,19 @@
 #
 # Two constraints shape everything below, and both are the device's:
 #
-#   1. Sample format is not negotiable: playRaw interprets ANY buffer as int16,
-#      whatever you pass it. Measured on device — 8000 bytes played for 459 ms
-#      at rate 8000, i.e. 4000 samples, not 8000. bytearray, array('B') and
-#      array('h') all behave identically. So: signed 16-bit, 11025 Hz.
-#   2. RAM. ~66 KB free with the app running, so the kit is trimmed to ~35 KB
-#      and lives in ONE blob that the sounds take memoryview slices of — no
-#      per-sound copies. (memoryview slices are accepted by playRaw; verified.)
+#   1. playRaw interprets ANY buffer as int16, whatever you pass it. Measured
+#      on device — 8000 bytes played for 459 ms at rate 8000, i.e. 4000
+#      samples, not 8000. bytearray, array('B') and array('h') all behave
+#      identically, which is what killed the first 8-bit version of this file.
+#      playWav does NOT have that problem: it reads the format out of the
+#      header, 8-bit included, and repitching still works because the header
+#      is ours to rewrite. Measured on device: the same buffer at 11025,
+#      22050 and 5512 Hz played for 301, 156 and 593 ms.
+#   2. RAM. ~66 KB free with the app running, and the kit is resident for the
+#      life of the program, so it is rendered to unsigned 8-bit — ~18 KB
+#      rather than ~36 — and handed to playWav() rather than playRaw(). See
+#      to_u8() for why that costs less than it sounds like it should, and why
+#      playWav is what makes 8-bit possible at all.
 #   3. CPU. Rendering on device costs ~5.4 s for the whole kit — measured, and
 #      far too slow for boot. So this module runs on the HOST: tools/build_kit.py
 #      renders it into lib/opcp_kit.bin, and the device just reads the file. The
@@ -282,7 +288,58 @@ def rate_for(midi):
 # ------------------------------------------------------------------ the blob
 DRUM_ORDER = ("BD", "SD", "HH", "OH", "RM", "TL", "TH", "CP", "CB")
 VOICE_ORDER = ("V0", "V1", "V2")
-MAGIC = b"OPK1"
+MAGIC = b"OPK2"                  # OPK1 was raw int16; OPK2 is 8-bit WAV
+
+WAV_HDR = 44                     # canonical RIFF/fmt /data, no extra chunks
+
+
+def to_u8(buf, seed=0x5BD1E995):
+    """Quantise the rendered int16 samples to unsigned 8-bit, with dither.
+
+    Why 8-bit at all: the whole kit lives in RAM for the life of the program,
+    and this board has ~156 KB of MicroPython heap that the WiFi driver, the
+    sequencer's tables and the screen all want a share of. Halving the kit
+    from 36 KB to 18 KB is the difference between having the radio and having
+    real drums, rather than choosing.
+
+    The first version of this synth was 8-bit for the same reason and had to
+    give it up: playRaw() reads ANY buffer as int16 whatever its type, so
+    8-bit samples came out as noise at double speed. playWav() reads the
+    format from the header instead, which is what makes this possible again.
+
+    Dither is TPDF and seeded, so the blob stays a reproducible build
+    artifact. Truncating instead correlates the quantisation error with the
+    signal, and on a decay tail that is a buzz riding the sound down rather
+    than noise; the triangular dither decorrelates it into steady hiss, which
+    is louder in the numbers and quieter to a listener. Measured SNR per
+    sound afterwards is 27-36 dB.
+    """
+    rng = _Rng(seed)
+    out = bytearray(len(buf))
+    for i in range(len(buf)):
+        # two rectangular draws make a triangular distribution, +/- 1 LSB
+        d = (rng.bipolar() + rng.bipolar()) * 128.0
+        v = int((buf[i] + d) / 256.0 + 0.5) + 128
+        if v > 255:
+            v = 255
+        elif v < 0:
+            v = 0
+        out[i] = v
+    return bytes(out)
+
+
+def wav8(data, rate=RATE):
+    """Wrap 8-bit mono samples in a WAV header the device can hand playWav().
+
+    The header is why the rate is not a playWav() argument the way it is a
+    playRaw() one — and also why repitching still works: opcp_audio rewrites
+    the four bytes at offset 24 before each note. Keep this header canonical
+    and 44 bytes; that offset is load-bearing on the device.
+    """
+    import struct
+    return (b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVEfmt " +
+            struct.pack("<IHHIIHH", 16, 1, 1, rate, rate, 1, 8) +
+            b"data" + struct.pack("<I", len(data)) + data)
 
 
 def render_all():
@@ -299,7 +356,8 @@ def pack(entries):
     """Serialise to the .bin the device loads.
 
     Layout: magic | count | count x (name[4], offset u32, nbytes u32) | data.
-    Little-endian throughout, matching the device's int16 sample order.
+    Each entry is a complete 8-bit mono WAV, header and all, so the device
+    hands the slice straight to playWav() without assembling anything.
     """
     import struct
     header = bytearray(MAGIC)
@@ -307,7 +365,7 @@ def pack(entries):
     body = bytearray()
     index = bytearray()
     for name, buf in entries:
-        raw = bytes(memoryview(buf).cast("B")) if array is not None else b""
+        raw = wav8(to_u8(buf)) if array is not None else b""
         index += struct.pack("<4sII", name.encode()[:4].ljust(4, b"\0"),
                              len(body), len(raw))
         body += raw

@@ -247,7 +247,8 @@ print("  kit loaded:   %s  (%d sounds)" % (A.kit_ok, len(A.KIT)))
 check(A.kit_ok, "PCM kit loaded from %s" % A.KIT_PATH)
 if A.kit_ok:
     kb = sum(len(b) for b in A.KIT.values())
-    print("  kit size:     %d bytes of int16 PCM at %d Hz" % (kb, A.RATE_BASE))
+    print("  kit size:     %d bytes of 8-bit WAV at %d Hz" % (kb, A.RATE_BASE))
+    check(len(A.KIT) == 12, "all 12 sounds loaded (%s)" % (A.kit_note or "ok"))
     for nm in ("BD", "SD", "HH", "V0", "V1", "V2"):
         check(nm in A.KIT, "kit has %s" % nm)
     # Every pitch the app can produce must land on a rate the driver handles,
