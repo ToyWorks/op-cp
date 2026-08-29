@@ -81,6 +81,39 @@ Facts about `playRaw` and `playWav`, all measured rather than assumed:
 `''` is the working directory, `/flash`. The Makefile already lands `lib/*.py`
 as `/flash/opcp_*.py`.
 
+## Keyboard: the bottom row is asleep until the top row is touched
+
+**Open, unfixed, low priority — there is a one-key workaround.** From a cold
+power-up, some keys never reach the `set_callback` handler at all. Press one
+that does — anything on the number row — and every key works from then on,
+for the rest of the session.
+
+| | |
+| --- | --- |
+| Dead until unlocked | space, `\`, `.`, `/` — the bottom row |
+| Unlocks it | `-`, `=`, `` ` ``, `9`, `0` — the number row |
+
+Measured, not inferred. A logging wrapper around `on_key` that records the
+raw code *before* any guard produced **no line at all** for the dead keys, so
+the callback is not firing — this is below op-cp, in `MatrixKeyboard`.
+
+Ruled out, each by experiment, so nobody repeats them:
+
+- **Not key dispatch.** `-` and space are branches of the same `if/elif`.
+- **Not a swallowed exception.** `on_key` wrapped in try/except, never fired.
+- **Not too few scans.** The main loop calls `kb.tick()` every frame from boot.
+- **Not phantom keys held at startup.** Draining the matrix at setup — 20
+  ticks with `get_key()` — returned `[]`.
+- **Not settling time.** 100 ms of scanning before `set_callback` changed
+  nothing.
+- **Not "the first press is eaten".** Pressing space FIRST does not unlock it;
+  pressing `=` does. It is the key that matters, not the ordinal.
+
+The experiment that would settle it: catch the REPL before the app starts,
+then poll `kb.is_pressed()` while somebody holds space. Seen there and the
+matrix works and only the callback is asleep, which op-cp could route around
+by polling `get_key()` in its own loop; not seen and it is the firmware's.
+
 ## Gotchas that will cost an hour
 
 - **The serial port is exclusive.** The UIFlow2 Web IDE and `mpremote` cannot
