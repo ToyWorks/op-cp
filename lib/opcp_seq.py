@@ -82,6 +82,7 @@ def storage_init(path=None):
         S.save_dir = path
         scan_slots()
         return
+    S.save_note = ""
     try:
         os.listdir("/sd")                    # already mounted (soft reset)
         S.save_dir = "/sd"
@@ -91,8 +92,24 @@ def storage_init(path=None):
             os.mount(machine.SDCard(slot=3, width=1, sck=40, miso=39, mosi=14,
                                     cs=12, freq=20000000), "/sd")
             S.save_dir = "/sd"
-        except Exception:
-            S.save_dir = "/flash"            # no card is not an error
+        except Exception as e:
+            # Falling back to /flash is not an error — a board with no card
+            # should still save. Falling back SILENTLY is, because two very
+            # different situations land here and only one of them is "no
+            # card": once the slot has been mounted, the SPI host stays
+            # claimed at the ESP-IDF level, and every later mount in a new
+            # VM fails with EBUSY or ESP_ERR_INVALID_STATE — including after
+            # machine.reset(). MEASURED: the card mounts on a cold power-up
+            # and not again until the next one. Without this note the FILES
+            # view simply shows different slots and nobody knows why.
+            S.save_dir = "/flash"
+            _err = getattr(e, "errno", None)
+            if _err in (16, -259) or "INVALID_STATE" in repr(e):
+                S.save_note = ("card present but its SPI host is still held "
+                               "from a previous reset — power-cycle to use "
+                               "it")
+            else:
+                S.save_note = "no SD card (%s)" % (e,)
 
     # one-time migration: the single-file era's opcp.json becomes slot 1
     try:

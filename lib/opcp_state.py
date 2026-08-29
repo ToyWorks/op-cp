@@ -75,6 +75,12 @@ class Seq:
         # (bpm, scale) per slot so the FILES view never reads files to draw —
         # opcp_seq writes it, opcp_screen reads it, and no import cycle forms.
         self.save_dir = "/flash"
+        # Why it is not the card, when it is not. "No card in the slot" and
+        # "the card is there and the SPI host is still held by a previous
+        # VM" look identical from here — both end up on /flash — and only
+        # one of them is fixed by power-cycling. Saying which is the whole
+        # point of keeping this.
+        self.save_note = ""
         self.slot_meta = [None] * C.SLOTS
         self.files_arm = False        # FILES: next slot digit saves, not loads
 

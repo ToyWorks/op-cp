@@ -69,6 +69,7 @@ def storage():
     firmware reflash and the card does.
     """
     return {"where": S.save_dir, "slots": C.SLOTS,
+            "note": getattr(S, "save_note", ""),
             "used": [i + 1 for i, m in enumerate(S.slot_meta) if m]}
 
 
