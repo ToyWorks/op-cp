@@ -60,8 +60,16 @@ Imports run strictly one way. If a new module needs to be imported by something
 below it in this list, fix the layering rather than adding a late import.
 
 ```
-opcp_conf -> opcp_state -> opcp_audio / opcp_ui -> opcp_screen -> opcp_seq -> opcp_keys -> app
+opcp_conf -> opcp_state -> opcp_audio / opcp_ui -> opcp_screen -> opcp_seq
+          -> opcp_keys / opcp_iface -> app
 ```
+
+`opcp_iface` sits BESIDE `opcp_keys`, not above it: the human's keyboard and
+an outside program are siblings, and each is one way into the same
+sequencer. It imports downward like everything else and knows nothing about
+who is calling — it is op-cp's own vocabulary ("the volume moved"), never a
+caller's ("this state changed"). Nothing in op-cp imports it; a standalone
+instrument simply does not load it.
 
 Add a screen to `opcp_screen`, a binding to `opcp_keys`, a constant to
 `opcp_conf`. Reasoning in [docs/architecture.md](docs/architecture.md).

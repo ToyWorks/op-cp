@@ -161,6 +161,24 @@ def balance(chs):
         set_ch(c, min(C.MAX_CH_VOL, int(trim_for(c) * scale)))
 
 
+def set_trim(track, gain):
+    """Per-track gain, which balance() picks up on the next step.
+
+    Two tables, because there are two paths: TRIM is what the PCM mixer
+    reads, C.CH_TRIM what the tone() fallback reads, and a caller changing
+    one and not the other gets a mix that changes when the kit fails to
+    load. Callers used to assign both from outside — including CH_TRIM,
+    a dict in the constants module, which the layering says holds no state.
+    Knowing that is this module's job.
+    """
+    global TRIM
+    if 0 <= track < len(TRIM):
+        t = list(TRIM)
+        t[track] = gain
+        TRIM = tuple(t)
+    C.CH_TRIM[track] = gain
+
+
 def trim_for(c):
     return TRIM[c] if kit_ok and c < len(TRIM) else C.CH_TRIM.get(c, 1.0)
 

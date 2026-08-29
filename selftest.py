@@ -241,6 +241,35 @@ S.recording = False
 S.track = 0
 S.view = C.V_ROLL
 
+banner("interface")
+# opcp_iface is the door an outside program comes in by. op-cp does not
+# import it, so nothing else here would notice it rotting.
+import opcp_iface as I
+import opcp_audio as A
+for _fn in ("transport", "pattern", "music", "mix", "storage", "audio",
+            "styles", "snapshot"):
+    check(callable(getattr(I, _fn, None)), "opcp_iface.%s() exists" % _fn)
+_t = I.transport()
+check(set(_t) == {"playing", "step", "bpm", "swing"}, "transport() shape")
+check(I.mix()["steps"] == len(C.VOLS), "mix() knows the volume ladder")
+check(I.mix()["gain"] <= 1.0, "mix() gain is a fraction")
+check(I.pattern()["banks"] == C.PATTERNS, "pattern() knows the bank count")
+check(len(I.styles()) == len(C.PRESETS), "styles() lists the factory set")
+# changes(): silent first, then exactly what moved
+_names, _snap = I.changes(None)
+check(_names == (), "changes(None) reports nothing, not everything")
+_was = S.bpm
+I.set_bpm(_was + 7)
+_names, _snap = I.changes(_snap)
+check(_names == ("bpm",), "changes() saw the tempo and nothing else")
+I.set_bpm(_was)
+_names, _snap = I.changes(_snap)
+# trim goes through the interface, not by assigning someone's constants
+I.set_track_trim(2, 0.5)
+check(A.TRIM[2] == 0.5, "set_track_trim moved the PCM table")
+check(C.CH_TRIM[2] == 0.5, "set_track_trim moved the tone() fallback too")
+I.set_track_trim(2, 0.85)
+
 banner("sound")
 import opcp_audio as A
 print("  kit loaded:   %s  (%d sounds)" % (A.kit_ok, len(A.KIT)))

@@ -21,9 +21,16 @@ wipe a track:
 
 ```
 SPACE play/stop      ENTER record arm (live, quantized to 16ths)
-^G generate  ^C clear  ^M mute  ^P pattern bank  ^[ ^] tempo  ^F files  ^N link
+^G generate  ^C clear  ^M mute  ^P pattern bank  ^S song  ^N link
+^[ ^] tempo  ^F files
 - = octave   ` scale   9 swing  0 volume   . / track   \ next view
 ```
+
+**^S is the form.** A pattern is one bar and there are four of them, so
+without it three quarters of what you write is never heard. ^S steps to the
+next bank at every bar — 1, 2, 3, 4, back to 1 — and pressing it again
+returns to looping whichever bank is up. Picking a bank by hand with ^P ends
+it too, because asking for a bank means that bank.
 
 `ctrl` is read from the keyboard driver's cached pressed-key table, so testing it
 is a dict lookup rather than an I²C transaction; a keyboard without that API — a

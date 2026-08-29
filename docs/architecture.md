@@ -27,6 +27,30 @@ Add a screen to `opcp_screen`, a binding to `opcp_keys`, a constant to
 `opcp_conf`. If a new module needs to be imported by something below it in that
 list, **the layering is wrong** — fix the layering, do not add a late import.
 
+## The door for a program
+
+`opcp_iface` is the surface an outside program drives, and it exists because
+the alternative was measured: before it, one caller reached into op-cp at 95
+places across four modules, and two of those were assignments to module
+constants — `A.TRIM` and `C.CH_TRIM`, in a file whose own header says it
+holds no state. Nothing declared that surface, so nothing could keep it.
+
+Three things follow from where it sits, beside `opcp_keys` rather than above
+it:
+
+- **It speaks op-cp's language.** `changes()` reports "the volume moved",
+  never "mix.master_gain changed". A caller translates into its own
+  vocabulary; op-cp does not learn one.
+- **Nothing in op-cp imports it.** A standalone instrument never loads the
+  module, and the keyboard path does not go through it.
+- **`changes()` is a list, not a set of methods.** Anything watching op-cp
+  used to hand-write one comparison per field, which fails the same way
+  every time: somebody adds a key, forgets the mirror, and a reading quietly
+  disagrees with the instrument. It happened twice — a muted device that
+  still read as audible, and ctrl+S moving the banks with nothing in the
+  log. Adding a field is now one entry in `WATCHED`.
+
+
 ## Two constraints that shape everything
 
 - **`app.py` must stay importable.** Everything lives behind
