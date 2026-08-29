@@ -182,6 +182,11 @@ def advance():
     prev = S.play_step
     S.play_step = (S.play_step + 1) % C.STEPS
 
+    # The bar turned over. Move BEFORE the step below reads S.pat, or bar two
+    # sounds its first step out of bar one's bank.
+    if S.play_step == 0 and S.chain:
+        S.pat = (S.pat + 1) % C.PATTERNS
+
     # decide the whole step's channel budget before any of it sounds
     chs = []
     for t in range(C.TRACKS):

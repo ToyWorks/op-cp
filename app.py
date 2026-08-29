@@ -11,6 +11,7 @@
 #
 #   SPACE play/stop     ENTER record arm (live, quantized to 16ths)
 #   ctrl+G generate   ctrl+C clear   ctrl+M mute   ctrl+P pattern
+#   ctrl+S song — step through all four banks, a bar each, instead of looping
 #   ctrl+[ ] tempo    ctrl+F files   - = octave   ` scale   9 swing   0 volume
 #   . / previous / next track        \ next view (help is the last one)
 #   FILES view: 1-8 load a slot, s then 1-8 save, w e t y drop in a preset

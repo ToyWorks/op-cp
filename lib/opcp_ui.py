@@ -307,13 +307,20 @@ def draw_footer():
 # scan just the keys. No track colour appears here — on every other screen a
 # lit colour means "the track you are editing", and help must not dilute that.
 # ^X means ctrl+X: the functions that used to squat in the piano rows.
+# Two columns of six with TWO pixels of slack: measured right edge 236 against
+# a 238 limit, and selftest asserts it. Column one holds the wide paired rows
+# and decides where column two begins, so a wide row landing in column two
+# runs off the panel — adding ^S on a row of its own did exactly that and
+# clipped "^N link" to "^N lin". Pair it with ^N and give bpm its own row.
+# Re-measure with selftest before adding anything here.
 HELP = (
     (("SPACE", C.FG), ("play/stop", C.DIM)),
     (("ENTER", C.FG), ("record", C.DIM)),
     (("\\", C.FG), ("views", C.DIM), ("^F", C.FG), ("files", C.DIM)),
     (("^G", C.FG), ("gen", C.DIM), ("^C", C.FG), ("clear", C.DIM)),
     (("^M", C.FG), ("mute", C.DIM), ("^P", C.FG), ("bank", C.DIM)),
-    (("^[ ^]", C.FG), ("bpm", C.DIM), ("^N", C.FG), ("link", C.DIM)),
+    (("^S", C.FG), ("song", C.DIM), ("^N", C.FG), ("link", C.DIM)),
+    (("^[ ^]", C.FG), ("bpm", C.DIM)),
     (("- =", C.FG), ("octave", C.DIM)),
     (("`", C.FG), ("scale", C.DIM), ("9", C.FG), ("swing", C.DIM)),
     (("0", C.FG), ("volume", C.DIM)),

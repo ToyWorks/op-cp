@@ -105,6 +105,10 @@ def on_key(_kb):
         elif ch == "p":
             S.pat = (S.pat + 1) % C.PATTERNS
             S.set_hero("BANK", S.pat + 1)
+            S.chain = False              # asking for a bank means that bank
+        elif ch == "s":
+            S.chain = not S.chain
+            S.set_hero("SONG", "ON" if S.chain else "OFF")
         elif ch == "[":
             S.bpm = max(40, S.bpm - 4)
             S.set_hero("BPM", S.bpm)
@@ -125,7 +129,7 @@ def on_key(_kb):
                 S.set_status("LINK OFF")
         else:
             return                           # ctrl+anything else is swallowed
-        if ch in "gcmp":
+        if ch in "gcmps":
             S.dirty_body = True
         return
 

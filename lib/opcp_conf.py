@@ -113,7 +113,7 @@ STEP_KEYS_B = "zxcvbnm,"
 # The ctrl key's own keycode in the ADV keyboard driver's pressed-key table;
 # MatrixKeyboard.is_key_pressed(KEY_CTRL) is True while it is physically held
 # (verified in uiflow-micropython 2.5.0 source). Mnemonic ctrl-layer bindings:
-# G generate, C clear, M mute, P pattern, [ ] tempo, F files.
+# G generate, C clear, M mute, P pattern, S song, [ ] tempo, F files.
 KEY_CTRL = 0x80
 
 # ------------------------------------------------------------------ presets

@@ -18,6 +18,10 @@ class Seq:
         self.patterns = [[[None] * C.STEPS for _ in range(C.TRACKS)]
                          for _ in range(C.PATTERNS)]
         self.pat = 0
+        # ctrl+S: step to the next bank at every bar instead of looping this
+        # one. A pattern is 16 steps and there are four of them, so without
+        # this only a quarter of what is written is ever heard.
+        self.chain = False
         self.track = 0
         self.cursor = 0
 
