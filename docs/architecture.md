@@ -60,8 +60,9 @@ asyncio would not improve this and is deliberately not used:
   redraw — would block an event loop exactly as it blocks this one. The fix was
   to stop doing full redraws, not to change the concurrency model.
 - It helps when code *waits* on I/O. Nothing here waits.
-- Tasks and awaits allocate, and the heap floor under load is already ~36 KB
-  with the PCM kit resident.
+- Tasks and awaits allocate, and the heap floor under load is tight with the
+  PCM kit resident — ~36 KB when that kit was int16, higher since it went to
+  8-bit, and 55 KB measured under the tiny-MHS layer with the radio up.
 
 If something genuinely blocking is added — a network fetch, an SD read — that is
 the moment to reconsider, not before.

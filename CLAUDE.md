@@ -79,7 +79,7 @@ jump between a label and the value it labels.
 |---|---|
 | [docs/development.md](docs/development.md) | the two loops, the ghost check, frame costs, every target |
 | [docs/architecture.md](docs/architecture.md) | layering, redraw discipline, timing and why no asyncio |
-| [docs/uiflow2-notes.md](docs/uiflow2-notes.md) | measured platform facts: `playRaw`, fonts, filesystem, the hour-costing gotchas |
+| [docs/uiflow2-notes.md](docs/uiflow2-notes.md) | measured platform facts: `playRaw` and `playWav`, fonts, filesystem, the hour-costing gotchas |
 | [docs/instrument.md](docs/instrument.md) | what the thing does, from a player's side |
 | [docs/screens.md](docs/screens.md) | every view, rendered |
 

@@ -75,7 +75,10 @@ the labels is what made BARS fast, not touching the fills.
 
 Step clock, measured under real playback: median 1 ms late, p90 2 ms, max 3 ms
 against a 133 ms sixteenth. Heap floor over ~1350 frames of playback with the PCM
-kit resident: ~36 KB, no `MemoryError`.
+kit resident: ~36 KB, no `MemoryError` — measured when the kit was int16 and
+36 KB. The 8-bit kit is half that size, so the floor is higher now by roughly
+what the kit gave back; the number above has not been re-measured standalone.
+Under the tiny-MHS layer, with the ESP-NOW radio up, it is 55 KB.
 
 ## Companion: SCD, the dancer
 
