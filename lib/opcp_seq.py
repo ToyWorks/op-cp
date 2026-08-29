@@ -56,7 +56,7 @@ def slot_path(i):
     return "%s/opcp%d.json" % (S.save_dir, i + 1)
 
 
-def storage_init():
+def storage_init(path=None):
     """Prefer the SD card when one is inserted; fall back to /flash.
 
     Patterns on the card survive a firmware reflash, which /flash does not.
@@ -64,8 +64,24 @@ def storage_init():
     (the official pin map). slot=3, because the display owns SPI2 and slot=2
     fails with ESP_ERR_INVALID_STATE — measured on device, with M5 up.
     UIFlow2 v2.5.0 does not mount the card on its own.
+
+    `path` overrides all of that and names the directory outright, skipping
+    the card probe. It exists for hosts: /flash and /sd are real on the board
+    and nowhere on a laptop, so without a seam here the whole of save_slot,
+    load_slot and the FILES view could only ever fail off hardware — which
+    means they could only be tested by flashing, which means they were not
+    tested. A simulator that cannot save is not simulating this instrument.
+    Nothing on the board passes it.
     """
     import os
+    if path is not None:
+        try:
+            os.mkdir(path)
+        except OSError:
+            pass                             # already there is the normal case
+        S.save_dir = path
+        scan_slots()
+        return
     try:
         os.listdir("/sd")                    # already mounted (soft reset)
         S.save_dir = "/sd"
